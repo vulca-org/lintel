@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "id": "minimal",
+  "open": true,
+  "running": false,
+  "stale": false,
+  "inProgress": false,
+  "rank": "none",
+  "flagged": false,
+  "events": [],
+  "labelUntilSeen": false,
+  "pillUntilSeen": false,
+  "popup": [],
+  "body": []
+}

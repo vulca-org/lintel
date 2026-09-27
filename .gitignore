@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.DS_Store
+.baseline-build/
+.build/
+*.mov
+.trial/
+.gemini-agent/
+
+.tools/
+artifacts/
+.playwright-mcp/
+**/bin/
+**/obj/
+.vs/

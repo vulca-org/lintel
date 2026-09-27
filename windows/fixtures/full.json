@@ -1,0 +1,338 @@
+{
+  "schema": 1,
+  "id": "full",
+  "open": true,
+  "running": true,
+  "stale": false,
+  "inProgress": true,
+  "rank": "waiting",
+  "flagged": false,
+  "events": [
+    {
+      "id": "question-1",
+      "type": "choice",
+      "at": "2026-09-19T16:00:00Z"
+    }
+  ],
+  "labelUntilSeen": true,
+  "pillUntilSeen": true,
+  "popup": [
+    {
+      "label": "需要你确认",
+      "text": "12 条引文中有 2 处归属待确认。",
+      "tone": "accent",
+      "lines": 2
+    }
+  ],
+  "body": [
+    {
+      "kind": "section",
+      "title": "你的要求",
+      "value": "本轮",
+      "valueTone": "inkSecondary",
+      "badge": "演示",
+      "items": [
+        {
+          "kind": "para",
+          "text": "核对讨论部分的引文归属，保留作者原有表述。",
+          "tone": "inkPrimary"
+        }
+      ]
+    },
+    {
+      "kind": "section",
+      "title": "当前进展",
+      "items": [
+        {
+          "kind": "iconLine",
+          "symbol": "doc.text",
+          "text": "已经核对 10 条，剩余 2 条需要判断。"
+        },
+        {
+          "kind": "pending",
+          "symbol": "ellipsis",
+          "text": "等待你回到来源程序确认",
+          "clockSince": "2026-09-19T16:00:00Z"
+        },
+        {
+          "kind": "steps",
+          "offset": 0,
+          "items": [
+            {
+              "symbol": "doc.text",
+              "text": "已整理 12 条引文",
+              "at": "2026-09-19T16:00:00Z"
+            },
+            {
+              "symbol": "magnifyingglass",
+              "text": "等待确认 2 处引用归属",
+              "at": "2026-09-19T16:01:12Z"
+            }
+          ],
+          "startedAt": "2026-09-19T16:00:00Z",
+          "live": true,
+          "limit": 4
+        },
+        {
+          "kind": "timeline",
+          "startedAt": "2026-09-19T16:00:00Z",
+          "endedAt": null,
+          "segments": [
+            {
+              "name": "整理材料",
+              "swatch": "purple",
+              "from": "2026-09-19T16:00:00Z",
+              "to": "2026-09-19T16:00:45Z",
+              "mergeIfEmpty": false
+            },
+            {
+              "name": "核对引文",
+              "swatch": "blue",
+              "from": "2026-09-19T16:00:45Z",
+              "to": null
+            }
+          ],
+          "markAt": "2026-09-19T16:00:45Z",
+          "ticks": [
+            "2026-09-19T16:01:12Z"
+          ],
+          "endLabel": "现在",
+          "sentPrefix": "开始 "
+        },
+        {
+          "kind": "choice",
+          "choiceKind": "question",
+          "title": "等待你的选择",
+          "countNote": "2 个选项",
+          "at": "2026-09-19T16:00:00Z",
+          "question": "先完成哪一部分？",
+          "options": [
+            "核对引文",
+            "检查图表"
+          ],
+          "action": "回到来源程序选择"
+        }
+      ]
+    },
+    {
+      "kind": "stats",
+      "cells": [
+        {
+          "label": "已核对",
+          "value": "10 / 12",
+          "tone": "inkPrimary",
+          "gauge": 0.83,
+          "dots": 3
+        },
+        {
+          "label": "待确认",
+          "value": "2 处",
+          "tone": "orange"
+        },
+        {
+          "label": "本轮用时",
+          "value": "2 分 05 秒",
+          "tone": "inkSecondary"
+        }
+      ]
+    }
+  ],
+  "revision": "turn-1",
+  "updatedAt": "2026-09-19T16:00:00Z",
+  "heartbeatSeconds": 60,
+  "activityAt": "2026-09-19T16:00:00Z",
+  "closedAt": null,
+  "group": {
+    "id": "demo-writing",
+    "name": "写作工作台"
+  },
+  "status": {
+    "center": "waiting",
+    "ringRemaining": 0.72,
+    "lastWriteAt": "2026-09-19T16:00:00Z",
+    "summary": "两处引用归属需要你确认",
+    "bounceAt": "2026-09-19T16:00:00Z",
+    "clock": {
+      "style": "live",
+      "since": "2026-09-19T16:00:00Z",
+      "seconds": 125,
+      "opacity": 0.8
+    }
+  },
+  "label": {
+    "text": "待你确认",
+    "tone": "orange"
+  },
+  "pill": {
+    "symbol": "doc.text",
+    "dot": "blue",
+    "tint": "orange",
+    "pulse": false,
+    "clockSince": "2026-09-19T16:00:00Z",
+    "title": "引文核对",
+    "preview": "有两处归属待确认"
+  },
+  "ears": {
+    "leading": "写作工作台",
+    "tag": {
+      "text": "引文核对",
+      "tone": "inkPrimary"
+    },
+    "tagSeen": {
+      "text": "引文核对",
+      "tone": "inkTertiary"
+    },
+    "phase": "等待确认"
+  },
+  "flip": {
+    "title": "引文核对",
+    "subtitle": "写作工作台",
+    "phase": "等待确认"
+  },
+  "detail": {
+    "listTitle": "讨论部分 · 引文核对",
+    "dot": "orange",
+    "dotSeen": "white35",
+    "historyNote": "本次演示共 3 轮",
+    "history": [
+      {
+        "id": "turn-0",
+        "at": "2026-09-19T16:00:00Z",
+        "tag": "材料整理",
+        "badge": "已完成",
+        "duration": "1 分 42 秒",
+        "expandable": true,
+        "lines": [
+          {
+            "label": "要求",
+            "text": "整理讨论部分引用的文献。",
+            "tone": "inkPrimary"
+          },
+          {
+            "label": "结果",
+            "text": "已归纳为 12 条待核对的引文。",
+            "tone": "inkSecondary"
+          }
+        ]
+      }
+    ],
+    "live": {
+      "at": "2026-09-19T16:00:00Z",
+      "tag": "引文核对",
+      "badge": "进行中",
+      "clockSince": "2026-09-19T16:00:00Z",
+      "lines": [
+        {
+          "label": "当前",
+          "text": "最后两处需要作者判断。",
+          "tone": "orange"
+        }
+      ],
+      "choice": {
+        "choiceKind": "question",
+        "title": "等待你的选择",
+        "countNote": "2 个选项",
+        "at": "2026-09-19T16:00:00Z",
+        "question": "先完成哪一部分？",
+        "options": [
+          "核对引文",
+          "检查图表"
+        ],
+        "action": "回到来源程序选择"
+      },
+      "timeline": {
+        "startedAt": "2026-09-19T16:00:00Z",
+        "endedAt": null,
+        "segments": [
+          {
+            "name": "整理材料",
+            "swatch": "purple",
+            "from": "2026-09-19T16:00:00Z",
+            "to": "2026-09-19T16:00:45Z",
+            "mergeIfEmpty": false
+          },
+          {
+            "name": "核对引文",
+            "swatch": "blue",
+            "from": "2026-09-19T16:00:45Z",
+            "to": null
+          }
+        ],
+        "markAt": "2026-09-19T16:00:45Z",
+        "ticks": [
+          "2026-09-19T16:01:12Z"
+        ],
+        "endLabel": "现在",
+        "sentPrefix": "开始 "
+      },
+      "steps": {
+        "offset": 0,
+        "items": [
+          {
+            "symbol": "doc.text",
+            "text": "已整理 12 条引文",
+            "at": "2026-09-19T16:00:00Z"
+          },
+          {
+            "symbol": "magnifyingglass",
+            "text": "等待确认 2 处引用归属",
+            "at": "2026-09-19T16:01:12Z"
+          }
+        ],
+        "startedAt": "2026-09-19T16:00:00Z",
+        "live": true,
+        "limit": 4
+      }
+    },
+    "chart": {
+      "title": "各轮用时",
+      "headline": "3 轮 · 继续保留你的判断",
+      "bars": [
+        {
+          "seconds": 102,
+          "swatch": "purple"
+        },
+        {
+          "seconds": 86,
+          "swatch": "blue"
+        },
+        {
+          "seconds": 125,
+          "swatch": "orange"
+        }
+      ],
+      "runningSince": "2026-09-19T16:00:00Z",
+      "legend": [
+        {
+          "name": "已完成",
+          "swatch": "blue",
+          "count": 2
+        },
+        {
+          "name": "进行中",
+          "swatch": "orange",
+          "count": 1
+        }
+      ]
+    },
+    "stats": [
+      {
+        "label": "已核对",
+        "value": "10 / 12",
+        "tone": "inkPrimary",
+        "gauge": 0.83,
+        "dots": 3
+      },
+      {
+        "label": "待确认",
+        "value": "2 处",
+        "tone": "orange"
+      },
+      {
+        "label": "本轮用时",
+        "value": "2 分 05 秒",
+        "tone": "inkSecondary"
+      }
+    ]
+  }
+}
