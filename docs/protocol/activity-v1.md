@@ -63,7 +63,11 @@
 | `chain` | 对象 |  |
 | `chain.error` | 字符串（≤20000 字） |  |
 | `chain.items` | 数组（≤500）of 对象 | 是 |
+| `chain.items[].actions` | 数组（≤4）of 对象 |  |
+| `chain.items[].actions[].id` | 字符串（≤512 字） | 是 |
+| `chain.items[].actions[].title` | 字符串（≤64 字） | 是 |
 | `chain.items[].approved` | 布尔 |  |
+| `chain.items[].blocks` | 数组（≤16）of 字符串（≤64 字） |  |
 | `chain.items[].id` | 字符串（≤16 字） | 是 |
 | `chain.items[].idle` | 整数 0…100000 |  |
 | `chain.items[].note` | 字符串（≤64 字） |  |
@@ -107,6 +111,7 @@
 | `detail.history[].lines[].label` | 字符串（≤64 字） | 是 |
 | `detail.history[].lines[].text` | 字符串（≤200000 字） | 是 |
 | `detail.history[].lines[].tone` | 颜色（调色板） | 是 |
+| `detail.history[].quiet` | 布尔 |  |
 | `detail.history[].rows` | 数组（≤16）of 对象 |  |
 | `detail.history[].rows[].copy` | 字符串（≤1024 字） |  |
 | `detail.history[].rows[].label` | 字符串（≤64 字） | 是 |

@@ -165,6 +165,7 @@ func overviewActivity(id: String = "loop-paper") -> Activity {
     turn.sections = ["Lb", "Db"]
     var other = Activity.Turn(id: "7e95405", at: t0.addingTimeInterval(-3600), tag: "并入摘要引言", badge: "94 句", duration: "7e95405", lines: [], expandable: true)
     other.sections = ["A", "I"]
+    other.quiet = true
     var d = Activity.Detail(listTitle: "paper · 9 句 · 已追到", dot: .indigo, history: [turn, other], chart: nil,
                             stats: [Activity.StatCell(label: "句", value: "646"), { var c = Activity.StatCell(label: "缺依据", value: "5", tone: .orange); c.hint = "台账 3 行 · 证据 2 份"; return c }(),
                                     Activity.StatCell(label: "上下文", value: "18%", gauge: 0.18, series: [0.1, 0.9, 0.18])])

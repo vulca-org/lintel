@@ -16,6 +16,8 @@ struct ItemGroup: View {
     let rows: [AnyView]
     var more: Int = 0
     var onMore: (() -> Void)? = nil
+    /// 点开的折叠组收回去；nil = 这组本来就不折。
+    var onFold: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -26,6 +28,19 @@ struct ItemGroup: View {
                         Text(name).font(.system(size: 12, weight: .semibold))
                         Text("\(count)").font(Ink.number(12, .regular))
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(tint)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 4)
+            } else if let onFold {
+                // 点开的折叠组：同一行换成朝下的箭头，再点收回去（09-28 交互测试第 3 条：点开以后收不回）。
+                Button(action: onFold) {
+                    HStack(spacing: 4) {
+                        Text(name).font(.system(size: 12, weight: .semibold))
+                        Text("\(count)").font(Ink.number(12, .regular))
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(tint)
                     .contentShape(Rectangle())
@@ -138,6 +153,41 @@ final class LintelWindow: NSObject, NSWindowDelegate {
         return w
     }
 
+    /// 弹出框要拖出来时系统来要窗口。按下鼠标还没拖就会来要（09-28 交互测试第 10 条），
+    /// 所以窗口已经开着时不在这里改它的选中项，等真拖出来（`didDetach`）再改。
+    func detachable(select id: String) -> NSWindow {
+        if let w = window, w.isVisible { return w }
+        return prepare(select: id)
+    }
+
+    /// 真拖出来了：选中弹出框现在那场；系统按弹出框的位置摆窗口，窗口是存下的尺寸（实测 872 高落在 y=397，下半截出屏），挪回屏内。
+    func didDetach(select id: String) {
+        model.selected = id
+        guard let w = window else { return }
+        fit(w)
+        NSApp.activate()
+        w.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self, weak w] in if let w { self?.fit(w) } }
+    }
+
+    private func fit(_ w: NSWindow) {
+        guard let vis = (w.screen ?? NSScreen.main)?.visibleFrame else { return }
+        let f = Self.fitted(w.frame, in: vis, min: w.minSize)
+        if f != w.frame { w.setFrame(f, display: true, animate: false) }
+    }
+
+    /// 窗口框挪进可见区：高宽不超过可见区（不小于最小尺寸），再平移到里面。
+    static func fitted(_ f: NSRect, in vis: NSRect, min: NSSize = .zero) -> NSRect {
+        var r = f
+        r.size.width = Swift.max(Swift.min(r.width, vis.width), Swift.min(min.width, vis.width))
+        r.size.height = Swift.max(Swift.min(r.height, vis.height), Swift.min(min.height, vis.height))
+        // 高度变小时保住顶边（窗口顶是用户拖着的那一头）。
+        if r.height < f.height { r.origin.y = f.maxY - r.height }
+        r.origin.x = Swift.min(Swift.max(r.minX, vis.minX), vis.maxX - r.width)
+        r.origin.y = Swift.min(Swift.max(r.minY, vis.minY), vis.maxY - r.height)
+        return r
+    }
+
     func show(select id: String) {
         let w = prepare(select: id)
         NSApp.activate()
@@ -154,6 +204,24 @@ final class LintelWindow: NSObject, NSWindowDelegate {
 final class WindowSelection {
     var selected: String?
     var tab: WindowTab = .list
+    /// 侧栏顺序钉住（作者 09-28 交互测试第 13 条）：按最近动静排，两场在跑的对话来回换位，点下去那一刻行已经换了。
+    @ObservationIgnored let conversationOrder = StableOrder()
+    @ObservationIgnored let draftOrder = StableOrder()
+}
+
+/// 第一次见到时按给的顺序（最近动静）排定，之后已见过的位置不再变；新出现的插到最上面（新的之间仍按给的顺序），没了的自然不列。
+final class StableOrder {
+    private var rank: [String: Int] = [:]
+    private var top = 0
+
+    func arrange(_ ids: [String]) -> [String] {
+        if rank.isEmpty {
+            for (i, id) in ids.enumerated() { rank[id] = i }
+        } else {
+            for id in ids.reversed() where rank[id] == nil { top -= 1; rank[id] = top }
+        }
+        return ids.sorted { rank[$0]! < rank[$1]! }
+    }
 }
 
 enum WindowTab: String, CaseIterable, Identifiable {
@@ -173,26 +241,29 @@ struct SidebarNode: Identifiable, Hashable {
 
 @MainActor
 enum SidebarModel {
-    static func conversations(_ xs: [Hosted]) -> [SidebarNode] {
-        PopoverScope.conversations(xs).map { h in
+    static func conversations(_ xs: [Hosted], order: StableOrder? = nil) -> [SidebarNode] {
+        var hs = PopoverScope.conversations(xs)
+        if let order { let by = Dictionary(hs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }); hs = order.arrange(hs.map(\.id)).compactMap { by[$0] } }
+        return hs.map { h in
             let child = PopoverScope.manuscript(in: h, xs).map { [node($0, draft: true)] }
             return SidebarNode(id: h.id, title: PopoverScope.title(h), count: IslandText.waiting(h.activity)?.count ?? 0, draft: false,
                                children: child)
         }
     }
 
-    static func drafts(_ xs: [Hosted]) -> [SidebarNode] {
-        xs.filter { $0.activity.open && $0.activity.ring != nil && Ordering.parent(of: $0, in: xs) == nil }
+    static func drafts(_ xs: [Hosted], order: StableOrder? = nil) -> [SidebarNode] {
+        var hs = xs.filter { $0.activity.open && $0.activity.ring != nil && Ordering.parent(of: $0, in: xs) == nil }
             .sorted { ($0.activity.activityAt ?? .distantPast) > ($1.activity.activityAt ?? .distantPast) }
-            .map { node($0, draft: true) }
+        if let order { let by = Dictionary(hs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }); hs = order.arrange(hs.map(\.id)).compactMap { by[$0] } }
+        return hs.map { node($0, draft: true) }
     }
 
     /// 侧栏的骨架：哪几场对话按什么顺序、各自嵌着哪份稿件、哪些稿件单列。骨架一变，侧栏整个重建（见 `.id`）。
     /// 选中的稿件从一场对话挪到另一场下面时，列表逐项更新会在旧位置留下它的残影（09-25 实拍：对话那一行叠着稿件的图标和字，
     /// 两行同时是选中色，之后一直不消）。标题、数字变了骨架不变，照旧逐项更新。
-    static func shape(_ xs: [Hosted]) -> String {
-        let convs = conversations(xs).map { n in ([n.id] + (n.children ?? []).map(\.id)).joined(separator: ">") }
-        return (convs + ["|"] + drafts(xs).map(\.id)).joined(separator: "\n")
+    static func shape(_ xs: [Hosted], convOrder: StableOrder? = nil, draftOrder: StableOrder? = nil) -> String {
+        let convs = conversations(xs, order: convOrder).map { n in ([n.id] + (n.children ?? []).map(\.id)).joined(separator: ">") }
+        return (convs + ["|"] + drafts(xs, order: draftOrder).map(\.id)).joined(separator: "\n")
     }
 
     static func node(_ h: Hosted, draft: Bool) -> SidebarNode {
@@ -215,7 +286,7 @@ struct LintelWindowView: View {
         NavigationSplitView {
             List(selection: $model.selected) {
                 Section(L("对话", "Conversations")) {
-                    ForEach(SidebarModel.conversations(xs)) { n in
+                    ForEach(SidebarModel.conversations(xs, order: model.conversationOrder)) { n in
                         if let kids = n.children, !kids.isEmpty {
                             // 嵌着稿件的对话默认展开（分镜 ①⓪③）；三角收起时朝里、展开时朝下（Disclosure controls :4）。
                             DisclosureGroup(isExpanded: Binding(get: { !collapsed.contains(n.id) },
@@ -228,7 +299,7 @@ struct LintelWindowView: View {
                         }
                     }
                 }
-                let drafts = SidebarModel.drafts(xs)
+                let drafts = SidebarModel.drafts(xs, order: model.draftOrder)
                 if !drafts.isEmpty {
                     Section(L("稿件", "Manuscripts")) {
                         ForEach(drafts) { n in sidebarRow(n).tag(n.id) }
@@ -237,9 +308,9 @@ struct LintelWindowView: View {
             }
             .listStyle(.sidebar)
             .focused($sidebarFocused)
-            .id(SidebarModel.shape(xs))
+            .id(SidebarModel.shape(xs, convOrder: model.conversationOrder, draftOrder: model.draftOrder))
             // 挂在重建出来的那张列表上：新列表出现时才设（onChange 里异步设，实拍有时赶在新列表进窗口之前，整段仍是灰色）。
-            .task(id: SidebarModel.shape(xs)) {
+            .task(id: SidebarModel.shape(xs, convOrder: model.conversationOrder, draftOrder: model.draftOrder)) {
                 try? await Task.sleep(for: .milliseconds(60))
                 sidebarFocused = true
             }
@@ -255,25 +326,44 @@ struct LintelWindowView: View {
         }
     }
 
-    private func sidebarRow(_ n: SidebarNode) -> some View { SidebarRow(node: n) }
+    private func sidebarRow(_ n: SidebarNode) -> some View { SidebarRow(node: n, selected: model.selected == n.id) }
 }
 
-/// 侧栏一行。图标用强调色、数字用次要灰；被选中铺上强调色底时两样都换成白（09-27 面板 grill 10：蓝底上的蓝图标、灰数字看不见）。
-/// 系统在选中行把 backgroundProminence 设成 .increased，写死的颜色不会自己反白，要读它。
+/// 侧栏一行。图标用强调色（Sidebars :10）、数字用次要灰；被选中、窗口在前台（系统铺强调色底）时两样换成白。
+/// 选中与否由列表传进来：09-27 读 backgroundProminence、09-28 交给系统和 listItemTint，深色外观实拍都是蓝底上的蓝图标——
+/// 那两条路在这里都不反白。窗口不在前台时选中底是灰的，强调色在灰底上看得清，不换。
 struct SidebarRow: View {
     let node: SidebarNode
-    @Environment(\.backgroundProminence) private var prominence
+    let selected: Bool
+    @Environment(\.controlActiveState) private var active
 
     var body: some View {
-        let selected = prominence == .increased
+        let onAccent = selected && active == .key
         HStack {
-            // 侧栏图标用 app 的强调色、跟随系统强调色（Sidebars :10）。
             Label { Text(node.title).lineLimit(1) } icon: {
-                Image(systemName: node.draft ? "doc.text" : "bubble.left").foregroundStyle(selected ? Color.white : Color.accentColor)
+                Image(systemName: node.draft ? "doc.text" : "bubble.left").foregroundStyle(onAccent ? Color.white : Color.accentColor)
             }
             Spacer(minLength: 4)
-            if node.count > 0 { Text("\(node.count)").font(Ink.number(12, .regular)).foregroundStyle(selected ? Color.white : Tone.secondary) }
+            if node.count > 0 { Text("\(node.count)").font(Ink.number(12, .regular)).foregroundStyle(onAccent ? Color.white : Tone.secondary) }
         }
+    }
+}
+
+/// 清单里默认折起的组（以后、做完）哪些被点开了：按对话、按组各记各的。
+/// 09-28 交互测试第 3 条：原来两组共用一个开关，点开「以后」连做完的几十项一起展开，而且收不回去；换对话也还开着。
+struct FoldedGroups: Equatable {
+    private var open: Set<String> = []
+
+    static func foldable(_ state: Activity.Chain.State) -> Bool { state == .done || state == .later }
+
+    func folded(_ activity: String, _ state: Activity.Chain.State) -> Bool {
+        Self.foldable(state) && !open.contains("\(activity)|\(state.rawValue)")
+    }
+
+    mutating func toggle(_ activity: String, _ state: Activity.Chain.State) {
+        guard Self.foldable(state) else { return }
+        let k = "\(activity)|\(state.rawValue)"
+        if open.contains(k) { open.remove(k) } else { open.insert(k) }
     }
 }
 
@@ -284,7 +374,7 @@ struct DetailPane: View {
     let store: ActivityStore
     let hosted: Hosted
     @Bindable var model: WindowSelection
-    @State private var openDone = false
+    @State private var folds = FoldedGroups()
 
     var body: some View {
         let xs = store.activities
@@ -326,10 +416,13 @@ struct DetailPane: View {
     @ViewBuilder private func listPage(_ draft: Hosted?) -> some View {
         if let c = hosted.activity.chain {
             ForEach(ChainLayout.groups(c), id: \.0) { state, items in
-                let folded = (state == .done || state == .later) && !openDone
+                let folded = folds.folded(hosted.id, state)
                 ItemGroup(name: ChainLayout.label(state, c.labels), count: items.count, tint: ItemStyle.tint(state),
-                          rows: folded ? [] : items.map { AnyView(ChainItemRow(item: $0, tint: ItemStyle.tint(state))) },
-                          more: folded ? items.count : 0, onMore: { openDone = true })
+                          rows: folded ? [] : items.map { AnyView(ChainItemRow(item: $0, tint: ItemStyle.tint(state),
+                                                                                onAction: { ChainActions.send(hosted, $0, store: store) })) },
+                          more: folded ? items.count : 0,
+                          onMore: { folds.toggle(hosted.id, state) },
+                          onFold: FoldedGroups.foldable(state) ? { folds.toggle(hosted.id, state) } : nil)
             }
         }
         if let d = draft, let m = FlightModel.make(d, registry: store.registry) {
@@ -349,7 +442,8 @@ struct DetailPane: View {
             }
             if !rerun.isEmpty {
                 ItemGroup(name: m.rerunLabel, count: rerun.count, tint: Tone.orange,
-                          rows: rerun.map { AnyView(ItemRow(symbol: "arrow.clockwise", tint: Tone.orange, text: PopoverScope.itemText($0))) })
+                          // 第二行带来源给的原因与改动量（写作循环：「句子改 174 新增 51 删 39」）——09-28 grill 第三轮 R5：只写「要重读」，看不出该不该重跑。
+                          rows: rerun.map { AnyView(ItemRow(symbol: "arrow.clockwise", tint: Tone.orange, text: PopoverScope.itemText($0), detail: $0.detail)) })
             }
         }
     }
@@ -361,6 +455,26 @@ struct DetailPane: View {
             Text(L("还没有轮次", "No turns yet")).font(.system(size: 13)).foregroundStyle(Tone.secondary)
         }
         ForEach(turns) { t in
+            if t.quiet == true { quietTurn(t) } else { fullTurn(t) }
+        }
+    }
+
+    /// 不是你说的一轮（后台通知）：一行细条，写时刻与来源给的第一行，不和真实的轮次一样占整张卡（09-28 面板 grill 第三轮 R3）。
+    private func quietTurn(_ t: Activity.Turn) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "bell").font(.system(size: 10)).foregroundStyle(Tone.secondary)
+            Text(t.lines.first?.text ?? L("后台通知", "Background notice"))
+                .font(.system(size: 12)).foregroundStyle(Tone.secondary).lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 8)
+            Text([t.at.map { RingHeader.clock($0) }, t.duration].compactMap { $0 }.joined(separator: " · "))
+                .font(Ink.number(11, .regular)).foregroundStyle(Tone.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func fullTurn(_ t: Activity.Turn) -> some View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Text(t.tag ?? "").font(.system(size: 13, weight: .semibold)).foregroundStyle(Tone.primary)
@@ -378,6 +492,5 @@ struct DetailPane: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Surface.group))
-        }
     }
 }

@@ -17,8 +17,12 @@ public final class StageState {
     var shapeSize: CGSize { CGSize(width: shapeWidth, height: shapeHeight) }
     /// 第五版：弹出框开着（分镜 ①⓪②）。开着时悬停不展开。
     var popover = false
-    /// 展开期间钉住的活动（Hosted.id）。
+    /// 展开期间钉住的活动（Hosted.id）：刘海此刻显示的那一场。悬停、到达闪现、点选都会写它。
     var pinned: String?
+    /// 你亲手点选的那一场（点底部那一行、点胶囊）；悬停与闪现不算。弹出框的「你钉住的」只认它（09-28 交互测试第 15 条）。
+    var chosen: String?
+    /// 从稿件小岛悬停展开的那一份：这时点卡片 = 点小岛，开窗口并选中它（09-28 交互测试第 16 条）。
+    var fromIsland: String?
     var pillWidth: CGFloat = 0
     var pillOut: CGFloat = 0
     var pillAnchorWidth: CGFloat = 0

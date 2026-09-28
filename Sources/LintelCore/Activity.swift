@@ -132,6 +132,17 @@ extension Activity {
             public var now: String?
             /// 「等别的」在等什么（CI、回信、额度）。单独一栏，和 now 各管各的（第二轮 N2：有了 now，等什么就被顶掉了）。
             public var wait: String?
+            /// 它一落地就能放开的项（本对话的编号）或外部的事（投稿）（09-28 spec「清单与下一步的分工」D1）。
+            public var blocks: [String]?
+            /// 作者在面板里可以直接点的动作（09-28 spec「清单实时」C）：第一个画成可点的复选框，全部进右键菜单。
+            /// lintel 不解析 id，点了原样写回来源的收件目录（`kind: action`），由来源决定做不做。
+            public var actions: [Action]?
+
+            public struct Action: Codable, Sendable, Equatable, Hashable {
+                public var id: String
+                public var title: String
+                public init(id: String, title: String) { self.id = id; self.title = title }
+            }
 
             /// 这一项是什么：主行。
             public var title: String { now == nil ? (was ?? text) : text }
@@ -575,6 +586,8 @@ extension Activity {
         public var rows: [Row]?
         /// 这一条碰过的节（总览剖面格的 id）；第二层按节筛时用（分镜 ㊻）。
         public var sections: [String]?
+        /// 这一轮不是你说的（许愿柳：后台任务通知等系统消息开始的一轮）。宿主画成一行细条，不占整张卡（09-28 面板 grill 第三轮 R3）。
+        public var quiet: Bool?
         public init(id: String, at: Date?, tag: String?, badge: String?, duration: String?, lines: [Line], expandable: Bool) {
             self.id = id; self.at = at; self.tag = tag; self.badge = badge; self.duration = duration; self.lines = lines; self.expandable = expandable
         }

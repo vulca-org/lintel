@@ -152,7 +152,7 @@ public final class StageController {
             onSeen: { [weak self] in self?.dismissShown() },
             onDropHover: { [weak self] inside in self?.dropHover(inside) },
             onDrop: { [weak self] urls in self?.dropped(urls) },
-            onSwitch: { [weak self] id in self?.switchTo(id) },
+            onSwitch: { [weak self] id in self?.switchTo(id, byClick: true) },
             onOpenWindow: { [weak self] id in self?.lintelWindow.show(select: id) }
         ))
         // 舞台是固定大小的窗口（placeStage 用 setFrame 定），不需要 SwiftUI 按内容给窗口定尺寸。
@@ -490,6 +490,7 @@ public final class StageController {
             self.demoLog("pill-hover-open \(other.id.prefix(8))")
             self.pillOpenedAt = Date()
             self.switchTo(other.id, force: true)
+            self.state.fromIsland = other.id
         }
         pillIntent = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.hoverDelay, execute: work)
@@ -549,6 +550,8 @@ public final class StageController {
         lastFlashAt = Date()
         lastFlashSource = ArrivalQueue.source(of: id)
         state.pinned = id
+        state.chosen = nil
+        state.fromIsland = nil
         if state.expanded {
             morph(to: targetShapeSize(expanded: true), .move)
         } else {
@@ -588,10 +591,12 @@ public final class StageController {
         morph(to: targetShapeSize(expanded: true), .move)
     }
 
-    /// 底部那一行或胶囊：切到那个会话并展开。这是你主动点的，算看过。
-    private func switchTo(_ id: String, force: Bool = false) {
+    /// 底部那一行或胶囊：切到那个会话并展开，算看过。byClick：你亲手点的才记成「你点选的」；悬停小岛停稳也走这里，但不算。
+    private func switchTo(_ id: String, force: Bool = false, byClick: Bool = false) {
         guard let s = store.activities.first(where: { $0.id == id }) else { return }
-        demoLog("switch \(id.prefix(8))")
+        demoLog("switch \(id.prefix(8))\(byClick ? " by-click" : "")")
+        state.chosen = byClick ? id : nil
+        state.fromIsland = nil
         autoCollapse?.invalidate(); autoCollapse = nil
         seen.markSeen(s)
         if state.expanded {
@@ -662,6 +667,8 @@ public final class StageController {
             guard let self, !self.state.expanded, !self.state.popover else { return }
             if pin != nil, self.state.pinned == pin {
                 self.state.pinned = nil
+                self.state.chosen = nil
+                self.state.fromIsland = nil
                 self.layout(animated: true)
             }
             // A：收起之后不马上接着弹排队的，等冷却到期只弹最新一条。
@@ -711,6 +718,7 @@ public final class StageController {
         else { demoLog("pill-open: no island"); return }
         demoLog("pill-open \(other.id.prefix(8))")
         switchTo(other.id, force: true)
+        state.fromIsland = other.id
     }
 
     /// 演示：翻到第 n 页（候选 E 的实拍；真实悬停在演示里被忽略）。
@@ -735,7 +743,25 @@ public final class StageController {
 
     /// 点击：灵动岛再长大一档变成面板。不是另开窗口——用户实测原来的标准窗口「跳脱」。
     private func openDetail() {
+        if case .window(let id) = Self.clickTarget(expanded: state.expanded, popover: state.popover,
+                                                   pinned: state.pinned, fromIsland: state.fromIsland) {
+            demoLog("island-card click → window \(id.prefix(14))")
+            autoCollapse?.invalidate(); autoCollapse = nil
+            if let h = store.activities.first(where: { $0.id == id }) { seen.markSeen(h) }
+            setExpanded(false, reason: "island-window")
+            lintelWindow.show(select: id)
+            return
+        }
         togglePopover()
+    }
+
+    enum ClickTarget: Equatable { case popover, window(String) }
+
+    /// 点展开的卡开什么。悬停稿件小岛 0.3 秒它就并进主岛展开（分镜 ㉞），小岛本身点不到了；
+    /// 这时卡上显示的就是小岛那份稿件，点它按小岛的设计开窗口并选中它，其余照旧开弹出框。
+    static func clickTarget(expanded: Bool, popover: Bool, pinned: String?, fromIsland: String?) -> ClickTarget {
+        guard expanded, !popover, let id = fromIsland, id == pinned else { return .popover }
+        return .window(id)
     }
 
     // MARK: 弹出框（第五版，分镜 ①⓪②）
@@ -745,7 +771,8 @@ public final class StageController {
 
     /// 弹出框拖出来与「在窗口中打开」都进同一个窗口（分镜 ①⓪③）；点稿件小岛也进它，侧栏选中那份稿件。
     private func wireWindow() {
-        pop.detachWindow = { [weak self] id in self?.lintelWindow.prepare(select: id) }
+        pop.detachWindow = { [weak self] id in self?.lintelWindow.detachable(select: id) }
+        pop.didDetach = { [weak self] id in self?.lintelWindow.didDetach(select: id) }
         pop.onOpenWindow = { [weak self] id in self?.lintelWindow.show(select: id) }
     }
 
@@ -755,6 +782,13 @@ public final class StageController {
         guard let id else { return }
         lintelWindow.show(select: id)
         if let tab, let t = WindowTab(rawValue: tab) { lintelWindow.select(tab: t) }
+    }
+
+    /// 弹出框说「你钉住的」只认你亲手点选、而且还在显示的那一场。悬停展开、悬停小岛、到达闪现都会改 pinned，
+    /// 原来直接拿 pinned 算原因，从悬停卡点开几乎总标「你钉住的」（09-28 交互测试第 15 条）。
+    static func chosenPin(pinned: String?, chosen: String?) -> String? {
+        guard let chosen, chosen == pinned else { return nil }
+        return chosen
     }
 
     /// 点刘海：收起悬停卡，从收起态的刘海弹出一个指着它的弹出框；再点一次关掉。
@@ -768,6 +802,8 @@ public final class StageController {
         // 讲哪场对话：主位是对话就是它；主位是嵌着的稿件就是它所在的对话；都不是就最近的对话。
         let conv = primary.flatMap { p in p.activity.ring == nil ? p : Ordering.parent(of: p, in: xs) } ?? PopoverScope.conversations(xs).first
         guard let conv else { return }
+        // 为什么是这一场：下面一行就把全部标成看过，原因要先算。
+        let why = primary.flatMap { Ordering.reason($0, in: xs, seen, pinned: Self.chosenPin(pinned: state.pinned, chosen: state.chosen)) }
         autoCollapse?.invalidate(); autoCollapse = nil
         hoverIntent?.cancel()
         for s in xs { seen.markSeen(s) }
@@ -776,14 +812,14 @@ public final class StageController {
         // 锚在收起态刘海的矩形上（探针：悬停卡开着时锚点会跟着卡走）。
         let collapsed = targetShapeSize(expanded: false)
         let rect = NSRect(x: view.bounds.midX - collapsed.width / 2, y: 0, width: collapsed.width, height: notchGeometry().height)
-        demoLog("popover conv=\(conv.id.prefix(14)) draft=\(draft)")
+        demoLog("popover conv=\(conv.id.prefix(14)) draft=\(draft) why=\(why?.rawValue ?? "-")")
         pop.onClosed = { [weak self] in
             self?.state.popover = false
             self?.demoLog("popover closed")
             self?.layout(animated: true)
         }
         wireWindow()
-        pop.show(store: store, focus: conv.id, tab: draft ? .draft : .list, relativeTo: rect, of: view)
+        pop.show(store: store, focus: conv.id, tab: draft ? .draft : .list, reason: why, relativeTo: rect, of: view)
     }
 
     public func presentPopover(draft: Bool) { togglePopover(draft: draft) }

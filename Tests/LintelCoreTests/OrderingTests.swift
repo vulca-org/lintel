@@ -16,6 +16,23 @@ struct OrderingTests {
 
     func label(_ text: String) -> Activity.Label { .init(text: text, tone: .white) }
 
+    @Test("选中原因：钉住 > 异常 > 等你 > 刚发生 > 没看过；看过且空闲的没有原因（面板 grill 第三轮 R6）")
+    func reason() {
+        let seen = SeenStore(ephemeral: true)
+        let plain = hosted("plain")
+        let anomaly = hosted("anomaly", { $0.rank = .anomaly })
+        let waiting = hosted("waiting", { $0.rank = .waiting })
+        let event = hosted("event", { $0.rank = .event })
+        let xs = [plain, anomaly, waiting, event]
+        #expect(Ordering.reason(plain, in: xs, seen) == .unread, "新的一版没看过")
+        seen.markSeen(plain)
+        #expect(Ordering.reason(plain, in: xs, seen) == nil, "看过且空闲：只是排在前面")
+        #expect(Ordering.reason(anomaly, in: xs, seen) == .anomaly)
+        #expect(Ordering.reason(waiting, in: xs, seen) == .waiting)
+        #expect(Ordering.reason(event, in: xs, seen) == .event)
+        #expect(Ordering.reason(anomaly, in: xs, seen, pinned: anomaly.id) == .pinned, "钉住的说钉住")
+    }
+
     @Test("主项：异常 > 等你 > 刚发生的事 > 没看过且自标不一致 > 没看过 > 最近动静；钉住优先；过期的不上")
     func focus() {
         let seen = SeenStore(ephemeral: true)

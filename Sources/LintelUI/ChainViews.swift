@@ -133,7 +133,7 @@ struct ChainMeta: View {
     let item: Activity.Chain.Item
 
     static func has(_ x: Activity.Chain.Item) -> Bool {
-        x.approved == true || x.idle != nil || !(x.note ?? "").isEmpty || !(x.wait ?? "").isEmpty
+        x.approved == true || x.idle != nil || !(x.note ?? "").isEmpty || !(x.wait ?? "").isEmpty || !(x.blocks ?? []).isEmpty
     }
 
     // 画在弹出框与窗口的浅底上：用 Tone（Ink 是给黑底刘海的白字，放在白卡片上看不见——09-27 第二轮修 N1 时实拍，旁注那一行留了高度却一个字都没有）。
@@ -146,6 +146,11 @@ struct ChainMeta: View {
             if let w = item.wait, !w.isEmpty {
                 // 「等别的」在等什么：放在最前，这一行的状态就靠它说清（第二轮 N2）。
                 Text(L("等 \(w)", "waiting on \(w)")).foregroundStyle(Tone.secondary).lineLimit(1)
+            }
+            if let b = item.blocks, !b.isEmpty {
+                // 挡着什么：排第一件时看它（09-28 spec D1）。
+                Text(L("挡着 \(b.joined(separator: "、"))", "blocks \(b.joined(separator: ", "))"))
+                    .foregroundStyle(Tone.secondary).lineLimit(1)
             }
             if item.approved == true {
                 HStack(spacing: 2) {
@@ -162,11 +167,13 @@ struct ChainMeta: View {
                     .fixedSize()
             }
             if let n = item.note, !n.isEmpty {
+                // 来源写明是什么（「依据 …」「证据 …」「本轮 N 次操作」），这里不猜。截在末尾、悬停看全文：
+                // 09-28 第三轮实拍从中间截成「gh repo view yha98…x_datasheet.tex:31」，头尾各剩半截。
                 Text(n)
-                    .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(Tone.secondary)
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .truncationMode(.tail)
+                    .help(n)
             }
         }
         .font(.system(size: 10, weight: .medium))   // Footnote 10（macOS 文字样式）
@@ -176,14 +183,45 @@ struct ChainMeta: View {
 /// 清单的一行（窗口清单页、弹出框共用；09-27 grill 第二轮 N1–N4）：
 /// 主行「编号 标题」——聊天和刘海上那一行清单都用编号指一项；第二行是现在要做什么；第三行是旁注（等什么、几轮没动、你认可过、依据）。
 /// 旁注在 753715f 删旧面板后一直没人画，README 写的「证据和预测分开」「等你太久没动会写出来」面板上看不到。
+/// 清单行上的动作写回来源收件（09-28 spec「清单实时」C）：走已有的面板动作通道，lintel 不解析 id。
+@MainActor
+enum ChainActions {
+    static func send(_ h: Hosted, _ a: Activity.Chain.Item.Action, store: ActivityStore) {
+        Drop.act(producer: h.producer, activity: h.activity.id, action: a.id, paths: store.paths)
+    }
+}
+
 struct ChainItemRow: View {
     let item: Activity.Chain.Item
     let tint: Color
     var symbol: String? = nil
+    /// 作者点了一个动作（09-28 spec「清单实时」C）：调用方把它写进来源收件。nil = 这里不让点（只看）。
+    var onAction: ((Activity.Chain.Item.Action) -> Void)? = nil
+    /// 点过、来源还没写回新状态：先画成已送出，免得以为没点上。项一变就清掉。
+    @State private var sent: String?
+
+    private var actions: [Activity.Chain.Item.Action] { onAction == nil ? [] : (item.actions ?? []) }
+
+    private func fire(_ a: Activity.Chain.Item.Action) {
+        sent = a.title
+        onAction?(a)
+    }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: symbol ?? ItemStyle.symbol(item.state)).font(.system(size: 12, weight: .medium)).foregroundStyle(tint).frame(width: 16)
+            if let first = actions.first, sent == nil {
+                Button { fire(first) } label: {
+                    Image(systemName: symbol ?? ItemStyle.symbol(item.state)).font(.system(size: 12, weight: .medium)).foregroundStyle(tint)
+                        .frame(width: 20, height: 20).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(first.title)
+                .accessibilityLabel("\(first.title) \(item.id)")
+            } else {
+                Image(systemName: sent == nil ? (symbol ?? ItemStyle.symbol(item.state)) : "arrow.up.circle")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(sent == nil ? tint : Tone.secondary).frame(width: 16)
+                    .help(sent.map { L("已送出：\($0)", "Sent: \($0)") } ?? "")
+            }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(item.id).font(Ink.number(12, .semibold)).foregroundStyle(Tone.secondary).fixedSize()
@@ -199,6 +237,11 @@ struct ChainItemRow: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .contextMenu {
+            ForEach(actions, id: \.self) { a in Button(a.title) { fire(a) } }
+        }
+        .onChange(of: item) { sent = nil }
     }
 }
 

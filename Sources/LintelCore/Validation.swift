@@ -173,6 +173,8 @@ public enum Validation {
             "state": .req(.oneOf(Set(Activity.Chain.State.allCases.map(\.rawValue)))),
             "note": .opt(.string(max: Limit.short)), "approved": .opt(.bool), "idle": .opt(.integer(0...100_000)),
             "was": .opt(.string(max: Limit.line)), "now": .opt(.string(max: Limit.line)), "wait": .opt(.string(max: Limit.short)),
+            "blocks": .opt(.array(.string(max: Limit.short), max: 16)),
+            "actions": .opt(.array(.object(["id": .req(.string(max: 512)), "title": .req(.string(max: Limit.short))]), max: 4)),
         ]), max: Limit.list)),
         "problems": .req(.array(.string(max: Limit.line), max: 16)),
         "labels": .req(.object(["done": .req(.string(max: Limit.short)), "doing": .req(.string(max: Limit.short)),
@@ -245,6 +247,7 @@ public enum Validation {
                 "lines": .req(.array(line, max: 4)), "expandable": .req(.bool),
                 "rows": .opt(.array(row, max: 16)),
                 "sections": .opt(.array(.string(max: Limit.short), max: 120)),
+                "quiet": .opt(.bool),
             ]), max: Limit.list)),
             "live": .opt(.object([
                 "at": .opt(.date), "tag": .opt(.string(max: Limit.short)), "badge": .req(.string(max: Limit.short)),

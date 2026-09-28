@@ -60,6 +60,22 @@ struct ValidationTests {
         #expect(tooMany.contains { $0.path.hasSuffix("rows") }, "\(tooMany)")
     }
 
+    @Test("history[].quiet 是可选布尔（后台通知的一轮画成细条）：缺省、true 接受，别的类型拒收并带路径")
+    func quietTurn() throws {
+        func withQuiet(_ v: Any?) throws -> [Validation.Reject] {
+            try mutate { obj in
+                var d = obj["detail"] as! [String: Any]
+                var h = d["history"] as! [[String: Any]]
+                if let v { h[0]["quiet"] = v } else { h[0].removeValue(forKey: "quiet") }
+                d["history"] = h; obj["detail"] = d
+            }
+        }
+        #expect(try withQuiet(true).isEmpty)
+        #expect(try withQuiet(nil).isEmpty)
+        let bad = try withQuiet("yes")
+        #expect(bad.contains { $0.path.hasSuffix("history[0].quiet") }, "\(bad)")
+    }
+
     @Test("label.count 是可选整数；chart 现在可选；strip 合规接受、格子不是调色板色拒收")
     func countChartStrip() throws {
         #expect(try mutate { var l = $0["label"] as! [String: Any]; l["count"] = 15; $0["label"] = l }.isEmpty)
@@ -132,6 +148,48 @@ struct ValidationTests {
         #expect(long.contains { $0.path.contains("was") }, "\(long)")
         let notString = try withWas(3)
         #expect(notString.contains { $0.path.contains("was") }, "\(notString)")
+    }
+
+    @Test("chain：blocks（挡着什么）可选；字符串数组就收，别的类型拒收并带路径（09-28 spec D1）")
+    func chainBlocks() throws {
+        func withBlocks(_ v: Any) throws -> [Validation.Reject] {
+            try mutate { o in
+                var c = o["chain"] as! [String: Any]
+                var items = c["items"] as! [[String: Any]]
+                items[0]["blocks"] = v
+                c["items"] = items
+                o["chain"] = c
+            }
+        }
+        #expect(try withBlocks(["L5", "投稿"]).isEmpty)
+        let notArray = try withBlocks("L5")
+        #expect(notArray.contains { $0.path.contains("blocks") }, "\(notArray)")
+        let notStrings = try withBlocks([5])
+        #expect(notStrings.contains { $0.path.contains("blocks") }, "\(notStrings)")
+    }
+
+    @Test("chain：actions（面板里能点的动作）可选；最多 4 个、标题短字上限，越界拒收并带路径（09-28 spec 清单实时 C）")
+    func chainActions() throws {
+        func withActions(_ v: Any) throws -> [Validation.Reject] {
+            try mutate { o in
+                var c = o["chain"] as! [String: Any]
+                var items = c["items"] as! [[String: Any]]
+                items[0]["actions"] = v
+                c["items"] = items
+                o["chain"] = c
+            }
+        }
+        let one: [String: Any] = ["id": "L1|done", "title": "做完"]
+        #expect(try withActions([one, ["id": "L1|drop", "title": "撤掉"]]).isEmpty)
+        let five = try withActions(Array(repeating: one, count: 5))
+        #expect(five.contains { $0.path.contains("actions") }, "\(five)")
+        let longTitle = try withActions([["id": "L1|done", "title": String(repeating: "长", count: 200)]])
+        #expect(longTitle.contains { $0.path.contains("actions") }, "\(longTitle)")
+        let noId = try withActions([["title": "做完"]])
+        #expect(noId.contains { $0.path.contains("actions") }, "\(noId)")
+        // 读得回来：解码后第一个动作就是复选框点的那个。
+        let a = try JSONDecoder().decode(Activity.Chain.Item.Action.self, from: JSONSerialization.data(withJSONObject: one))
+        #expect(a == .init(id: "L1|done", title: "做完"))
     }
 
     @Test("chain：now（现在要做什么）与 wait（在等什么）可选；wait 超过短字上限拒收并带路径（09-27 grill 第二轮 N2/N3）")

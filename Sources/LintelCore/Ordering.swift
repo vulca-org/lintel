@@ -71,6 +71,22 @@ public enum Ordering {
         return l.first
     }
 
+    /// 一项为什么被选成主项：与 `focus` 同一套规则，说出命中的是哪一条（09-28 面板 grill 第三轮 R6：弹出框落在哪场对话看起来会跳，
+    /// 其实是「没看过的新一轮」把它拉了过去，面板上没有任何记号说明）。都不命中是 nil：只是排在前面。
+    /// 要在标记「看过」之前算——点开弹出框就把一切标成看过了。
+    public enum FocusReason: String, Sendable, Equatable { case pinned, anomaly, waiting, event, unread }
+
+    public static func reason(_ h: Hosted, in xs: [Hosted], _ seen: SeenStore, pinned: String? = nil) -> FocusReason? {
+        if let pinned, pinned == h.id { return .pinned }
+        switch effectiveRank(h, in: xs) {
+        case .anomaly: return .anomaly
+        case .waiting: return .waiting
+        case .event: return .event
+        case .none: break
+        }
+        return ([h] + children(of: h, in: xs)).contains { seen.isUnread($0) } ? .unread : nil
+    }
+
     /// 第二项：进胶囊的那个。只挑有话说的：看过且空闲的不占胶囊。
     public static func secondary(_ xs: [Hosted], _ seen: SeenStore, primary: Hosted?) -> Hosted? {
         let l = live(xs).filter { $0.id != primary?.id }
