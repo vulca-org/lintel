@@ -170,6 +170,32 @@ final class LintelWindow: NSObject, NSWindowDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self, weak w] in if let w { self?.fit(w) } }
     }
 
+    var isVisible: Bool { window?.isVisible ?? false }
+
+    /// 窗口开着时从弹出框自己拖出来（ConversationPopover.nativeDetach）：选中这一项，窗口顶边到鼠标下、提到最前。
+    func grab(select id: String, at p: NSPoint) {
+        model.selected = id
+        guard let w = window else { return }
+        w.setFrame(Self.grabbed(w.frame, at: p), display: true)
+        NSApp.activate()
+        w.makeKeyAndOrderFront(nil)
+    }
+
+    func follow(_ p: NSPoint) {
+        guard let w = window else { return }
+        w.setFrameOrigin(Self.grabbed(w.frame, at: p).origin)
+    }
+
+    /// 松手：挪进可见区。
+    func release() {
+        if let w = window { fit(w) }
+    }
+
+    /// 鼠标落在窗口顶上居中、顶边往下 14 点处（标题栏那一条）；尺寸不变。屏幕坐标，原点在左下。
+    static func grabbed(_ f: NSRect, at p: NSPoint) -> NSRect {
+        NSRect(x: p.x - f.width / 2, y: p.y + 14 - f.height, width: f.width, height: f.height)
+    }
+
     private func fit(_ w: NSWindow) {
         guard let vis = (w.screen ?? NSScreen.main)?.visibleFrame else { return }
         let f = Self.fitted(w.frame, in: vis, min: w.minSize)
@@ -245,14 +271,17 @@ enum SidebarModel {
         var hs = PopoverScope.conversations(xs)
         if let order { let by = Dictionary(hs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }); hs = order.arrange(hs.map(\.id)).compactMap { by[$0] } }
         return hs.map { h in
-            let child = PopoverScope.manuscript(in: h, xs).map { [node($0, draft: true)] }
+            // 嵌着的稿件全列（`drafts` 不收嵌着的，这里只列一份另一份就两组都不在：10-04 一份稿件从侧栏消失）；按 id 排，稿件动了不改骨架。
+            // 所属按 `listedParent`：对话打盹、稿件过期都不改侧栏里的位置（10-04 一场对话空闲后两份跳回稿件组）。
+            let kids = xs.filter { $0.activity.open && $0.activity.ring != nil && Ordering.listedParent(of: $0, in: xs)?.id == h.id }
+                .sorted { $0.id < $1.id }.map { node($0, draft: true) }
             return SidebarNode(id: h.id, title: PopoverScope.title(h), count: IslandText.waiting(h.activity)?.count ?? 0, draft: false,
-                               children: child)
+                               children: kids.isEmpty ? nil : kids)
         }
     }
 
     static func drafts(_ xs: [Hosted], order: StableOrder? = nil) -> [SidebarNode] {
-        var hs = xs.filter { $0.activity.open && $0.activity.ring != nil && Ordering.parent(of: $0, in: xs) == nil }
+        var hs = xs.filter { $0.activity.open && $0.activity.ring != nil && Ordering.listedParent(of: $0, in: xs) == nil }
             .sorted { ($0.activity.activityAt ?? .distantPast) > ($1.activity.activityAt ?? .distantPast) }
         if let order { let by = Dictionary(hs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }); hs = order.arrange(hs.map(\.id)).compactMap { by[$0] } }
         return hs.map { node($0, draft: true) }

@@ -39,6 +39,12 @@ struct FlightModel: Equatable {
     /// 和「要重跑」同时亮成警示色，读起来像出了问题。颜色跟来源走，不按有没有值。
     var submitUrgent = false
     var youLabel = "等你裁", rerunLabel = "要重跑", submitLabel = "投稿"
+    /// 航线下那一句：冻结期读者组过期、逐段改稿时落了的部分对不上几处。不算要重跑。
+    var frozenNote: String? = nil
+    /// 环算不出来时来源写的原因（ring.error）。原来宿主收下却不画，环就是一圈空白（10-04：一份稿件的覆盖摘要读不出时）。
+    var problem: String? = nil
+    /// 逐段改稿时航线上方那一句：第几部分、已落几部分。
+    var progress: String? = nil
 
     @MainActor static func make(_ h: Hosted, registry: Registry?) -> FlightModel? {
         guard let r = h.activity.ring else { return nil }
@@ -46,7 +52,7 @@ struct FlightModel: Equatable {
         let paper = cells.first { $0.title == "论文" }
         let build = cells.first { $0.title.hasPrefix("投稿") }
         let hung = r.segments.flatMap(\.items)
-        return FlightModel(
+        var m = FlightModel(
             source: sourceRef(registry, h.producer).name,
             name: r.name ?? h.activity.label?.text ?? h.activity.id,
             status: paper.map { $0.title + ($0.value ?? $0.text) },
@@ -60,6 +66,10 @@ struct FlightModel: Equatable {
             rerun: hung.filter { $0.you != true }.count,
             submit: build.map { $0.value ?? $0.text },
             submitUrgent: build?.tone == .orange || build?.tone == .red)
+        m.frozenNote = r.frozenNote
+        m.problem = r.error
+        m.progress = r.progress
+        return m
     }
 
     /// 最近动静的时刻：今天写「18:52」，更早写「09-23」。
@@ -69,16 +79,26 @@ struct FlightModel: Equatable {
         return f.string(from: t)
     }
 
-    /// 航线下写哪几处名字：起点、位置、终点；挨得太近（位置是第 0、1 站或最后一站）就只留位置与终点。
-    func namedStops() -> [Int] {
+    /// 航线下一处名字是什么：走到的那一站、卡住的那一站，或只是站名（起点、终点）。
+    enum LabelKind: Equatable { case reached, stuck, plain }
+
+    /// 航线下写哪几处名字，按先后排好：走到（位置）、卡在（等你的第一环，和位置不是同一站时）、起点、终点。
+    /// 走到与卡在是两件事（spec 2026-09-29 R6）：只画一个方框时，读者分不出「做到哪」和「卡在哪」。
+    /// 挨得太近的名字不写：起点离已写的名字至少隔一站；卡在在七站的环上离走到至少隔一站，四、五站的环上相邻也写。
+    func labeledStops() -> [(Int, LabelKind)] {
         guard !stops.isEmpty else { return [] }
         let last = stops.count - 1
-        guard let c = position else { return [0, last] }
-        var out = [c]
-        if c >= 2 { out.insert(0, at: 0) }
-        if c < last { out.append(last) }
-        return out
+        guard let c = position else { return [(0, .plain), (last, .plain)] }
+        var out: [(Int, LabelKind)] = [(c, .reached)]
+        if let k = current, k != c, abs(k - c) >= (stops.count <= 5 ? 1 : 2) { out.append((k, .stuck)) }
+        let taken = { (i: Int, gap: Int) in out.allSatisfy { abs($0.0 - i) >= gap } }
+        if taken(0, 2) { out.append((0, .plain)) }
+        if last != c, taken(last, 1), current.map({ abs($0 - last) >= 2 || $0 == c }) ?? true { out.append((last, .plain)) }
+        return out.sorted { $0.0 < $1.0 }
     }
+
+    /// 只要站号（旧的调用方与测试）。
+    func namedStops() -> [Int] { labeledStops().map(\.0) }
 }
 
 /// 航班卡。刘海里是黑底白字（style .notch）；弹出框与窗口里跟随系统深浅，画在 `Surface.card` 上（style .panel）。
@@ -111,7 +131,16 @@ struct FlightCard: View {
                         .background(Capsule().fill(model.statusUrgent ? Tone.orange : quiet.opacity(0.18)))
                 }
             }
+            if let p = model.progress {
+                Text(p).font(.system(size: 12, weight: .semibold)).foregroundStyle(ink).lineLimit(1)
+            }
             RouteView(model: model, ink: ink, quiet: quiet)
+            if let note = model.frozenNote {
+                Text(note).font(.system(size: 11)).foregroundStyle(quiet).lineLimit(1)
+            }
+            if let p = model.problem {
+                Text(p).font(.system(size: 11)).foregroundStyle(Tone.orange).lineLimit(2).help(p)
+            }
             if style == .panel { RouteLegend(model: model, ink: ink, quiet: quiet) }
             HStack(alignment: .top, spacing: 12) {
                 column(model.youLabel, "\(model.you)", model.you > 0 ? Tone.cyan : quiet,
@@ -168,26 +197,44 @@ struct RouteView: View {
                         .help(s.name + " · " + RouteNode.word(s.state, current: i == cur))
                         .position(x: x(i), y: y)
                 }
-                ForEach(model.namedStops(), id: \.self) { i in
-                    let isCur = i == cur
-                    Text(label(i, isCur))
-                        .font(.system(size: isCur ? 12 : 11, weight: isCur ? .semibold : .medium))
-                        .foregroundStyle(isCur ? ink : quiet)
+                ForEach(model.labeledStops(), id: \.0) { i, kind in
+                    let text = label(i, kind)
+                    Text(text)
+                        .font(.system(size: kind == .plain ? 11 : 12, weight: kind == .plain ? .medium : .semibold))
+                        .foregroundStyle(kind == .reached ? ink : kind == .stuck ? stuckTint(model.stops[i].state) : quiet)
                         .lineLimit(1)
                         .fixedSize()
-                        .position(x: labelX(x(i), label(i, isCur), g.size.width), y: Self.stop + 4 + Self.labelHeight / 2)
+                        .position(x: labelX(x(i), text, g.size.width), y: Self.stop + 4 + Self.labelHeight / 2)
                 }
             }
         }
         .frame(height: Self.stop + 4 + Self.labelHeight)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(model.stops.enumerated().map { i, s in (i == model.position ? "做到 " : "") + s.name }.joined(separator: "，"))
+        .accessibilityLabel(model.stops.enumerated().map { i, s in
+            (i == model.position ? L("走到 ", "reached ") : i == model.current ? L("卡在 ", "stuck at ") : "") + s.name
+        }.joined(separator: "，"))
     }
 
-    /// 站名；位置那一站后面加最近动静的时刻（今天写时分，更早写月日）。
-    private func label(_ i: Int, _ isPosition: Bool) -> String {
-        guard isPosition, let t = model.positionAt else { return model.stops[i].name }
-        return model.stops[i].name + " · " + FlightModel.when(t)
+    /// 卡在那一站的颜色跟它的状态：等你裁是青，过期是橙，其他是次要色。
+    private func stuckTint(_ s: Activity.Ring.State) -> Color {
+        switch s {
+        case .waiting: return Tone.cyan
+        case .stale: return Tone.orange
+        default: return quiet
+        }
+    }
+
+    /// 站名；走到那一站写「走到 X」并加最近动静的时刻（今天写时分，更早写月日），卡住那一站写「卡在 X」。
+    private func label(_ i: Int, _ kind: FlightModel.LabelKind) -> String {
+        let name = model.stops[i].name
+        switch kind {
+        case .plain: return name
+        case .stuck: return L("卡在 ", "stuck at ") + name
+        case .reached:
+            let base = L("走到 ", "reached ") + name
+            guard let t = model.positionAt else { return base }
+            return base + " · " + FlightModel.when(t)
+        }
     }
 
     /// 两端的名字贴着边，不越出卡片。
@@ -206,7 +253,7 @@ struct RouteNode: View {
 
     /// 状态词，和写作循环写在格子里的那一小句一致。
     static func word(_ s: Activity.Ring.State, current: Bool) -> String {
-        if current { return L("做到这里", "reached") }
+        if current { return L("走到", "reached") }
         switch s {
         case .done: return L("做过", "done")
         case .waiting: return L("等你裁", "your call")

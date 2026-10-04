@@ -227,6 +227,10 @@ extension Activity {
         /// 这一轮最远做到哪一环（有动静落在这一轮里的环里最靠后的那个）。与 current（等你的第一环）、latest（最后动的那环）不同：
         /// 作者 09-24 问「为什么还在设计这个阶段」——当前被一条旧未决钉在设计，最近动静是一条评论，都说不出做到哪。
         public var reached: String?
+        /// 冻结期（稿件只收正确性）读者组过期时的那一句（「冻结期不重读（改动 516 处）」）：说出来，但不挂成要重跑。
+        public var frozenNote: String?
+        /// 逐段改稿时航线上方那一句（「第 2/7 部分：相关工作（已落 1）」）：环这时是当前这一部分的几步。
+        public var progress: String?
         public var unhung: [Item]
         public var waiting: Int
         public var closed: [Gate]

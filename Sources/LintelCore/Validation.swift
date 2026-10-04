@@ -197,6 +197,7 @@ public enum Validation {
             "items": .req(.array(ringItem, max: 32)),
         ]), max: 8)),
         "current": .opt(.string(max: 16)), "latest": .opt(.string(max: 16)), "latestAt": .opt(.date), "reached": .opt(.string(max: 16)),
+        "frozenNote": .opt(.string(max: Limit.short)), "progress": .opt(.string(max: Limit.short)),
         "unhung": .req(.array(ringItem, max: 32)),
         "waiting": .req(.integer(0...100_000)),
         "closed": .req(.array(.object(["date": .req(.string(max: 16)), "items": .req(.array(.string(max: Limit.short), max: 64))]), max: 32)),

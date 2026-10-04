@@ -39,6 +39,10 @@ public enum Ordering {
         }?.1
     }
 
+    /// 窗口侧栏用的：先按上面的规矩找活的；都过期了（许愿柳 10 分钟没动静就标过期）就取开着的那场。
+    /// 侧栏照样列着过期的对话，稿件不该随对话打盹跳回「稿件」组（10-04 实拍）；过期的稿件也照样有所属。刘海仍按 `parent`。
+    public static func listedParent(of h: Hosted, in xs: [Hosted]) -> Hosted? { parent(of: h, in: xs) ?? parent(of: h, among: xs) }
+
     /// 嵌在 p 里的活动（按上刘海的先后）。
     public static func children(of p: Hosted, in xs: [Hosted]) -> [Hosted] {
         let a = awake(xs)

@@ -774,6 +774,10 @@ public final class StageController {
         pop.detachWindow = { [weak self] id in self?.lintelWindow.detachable(select: id) }
         pop.didDetach = { [weak self] id in self?.lintelWindow.didDetach(select: id) }
         pop.onOpenWindow = { [weak self] id in self?.lintelWindow.show(select: id) }
+        pop.windowVisible = { [weak self] in self?.lintelWindow.isVisible ?? false }
+        pop.ownDragged = { [weak self] id, p in self?.lintelWindow.grab(select: id, at: p) }
+        pop.ownMoved = { [weak self] p in self?.lintelWindow.follow(p) }
+        pop.ownEnded = { [weak self] in self?.lintelWindow.release() }
     }
 
     public func presentWindow(select prefix: String?, tab: String?) {

@@ -136,6 +136,50 @@ struct IslandV5Tests {
         #expect(m(nil, 7).namedStops() == [0, 6])
     }
 
+    @Test("走到与卡在分开写：卡在的那一站和走到不同就另写一处；七站的环上相邻不写，四站的环上相邻也写（spec 2026-09-29 R6）")
+    func reachedAndStuck() {
+        func m(_ pos: Int?, _ cur: Int?, _ n: Int) -> FlightModel {
+            FlightModel(source: "", name: "", status: nil, statusUrgent: false,
+                        stops: (0..<n).map { .init(name: "\($0)", state: .done) }, current: cur, position: pos, positionAt: nil,
+                        youOldest: nil, you: 0, rerun: 0, submit: nil)
+        }
+        let seven = m(4, 1, 7).labeledStops()
+        #expect(seven.map(\.0) == [1, 4, 6])
+        #expect(seven.first { $0.0 == 4 }?.1 == .reached && seven.first { $0.0 == 1 }?.1 == .stuck)
+        #expect(!m(4, 3, 7).labeledStops().contains { $0.1 == .stuck }, "七站的环上挨着走到：不写，免得两处名字叠在一起")
+        #expect(m(3, 2, 4).labeledStops().contains { $0 == (2, .stuck) }, "四站的环站距宽，挨着也写")
+        #expect(m(3, 3, 4).labeledStops().filter { $0.1 != .plain }.map(\.1) == [.reached], "同一站只写走到")
+        #expect(RouteNode.word(.done, current: true) == L("走到", "reached"))
+    }
+
+    @Test("环算不出来：来源写的原因收进航班卡（10-04 之前收下不画，环是一圈空白）")
+    func ringError() throws {
+        var h = Self.manuscript("draft-a", stale: 0)
+        #expect(try #require(FlightModel.make(h, registry: nil)).problem == nil)
+        h.activity.ring!.segments = []
+        h.activity.ring!.error = "环算不出来：覆盖摘要没有或读不出"
+        let m = try #require(FlightModel.make(h, registry: nil), "空环也是稿件：照样有航班卡")
+        #expect(m.problem == "环算不出来：覆盖摘要没有或读不出")
+        #expect(m.stops.isEmpty)
+    }
+
+    @Test("逐段改稿那一句：来源写了就收，画在航线上方")
+    func progressLine() throws {
+        var h = Self.manuscript("draft-a", stale: 0)
+        #expect(try #require(FlightModel.make(h, registry: nil)).progress == nil)
+        h.activity.ring!.progress = "第 2/3 部分：相关工作（已落 1）"
+        #expect(try #require(FlightModel.make(h, registry: nil)).progress == "第 2/3 部分：相关工作（已落 1）")
+    }
+
+    @Test("冻结期那一句：来源写了就收、画在航线下，不算要重跑")
+    func frozenNote() throws {
+        var h = Self.manuscript("draft-a", stale: 0)
+        h.activity.ring!.frozenNote = "冻结期不重读（改动 12 处）"
+        let m = try #require(FlightModel.make(h, registry: nil))
+        #expect(m.frozenNote == "冻结期不重读（改动 12 处）")
+        #expect(m.rerun == 0)
+    }
+
     @Test("投稿那一格的颜色跟来源走：来源标白的「可上传」不是警示，标橙或红的才是，没标的不是（09-27 面板 grill 9）")
     func submitTone() throws {
         func model(_ cell: String) throws -> FlightModel {
@@ -180,6 +224,38 @@ struct IslandV5Tests {
         #expect(convs.first?.children?.map(\.id) == [nested.id])
         #expect(SidebarModel.drafts(xs).map(\.id) == [loose.id])
         #expect(PopoverScope.conversations(xs).map(\.id) == [parent.id])
+    }
+
+    @Test("窗口侧栏：一场对话嵌着两份稿件，两份都在它下面；哪份都不能两组都不在（10-04 实拍：一份稿件从侧栏消失）")
+    func sidebarTwoDraftsInOneConversation() {
+        var conv = Activity(id: "c"); conv.open = true; conv.activityAt = Date(timeIntervalSince1970: 5)
+        let parent = Hosted(producer: "willow", activity: conv, writtenAt: nil)
+        let second = Self.manuscript("draft-c", stale: 0, within: "c", at: 40)
+        let first = Self.manuscript("draft-b", stale: 0, within: "c", at: 30)
+        let loose = Self.manuscript("fw", stale: 2, at: 10)
+        let xs = [parent, second, first, loose]
+        let convs = SidebarModel.conversations(xs)
+        #expect(convs.first?.children?.map(\.id) == [first.id, second.id], "按 id 排，动静先后不改顺序")
+        let shown = convs.flatMap { [$0.id] + ($0.children ?? []).map(\.id) } + SidebarModel.drafts(xs).map(\.id)
+        #expect(Set(shown) == Set(xs.map(\.id)) && shown.count == xs.count, "每件恰好出现一次")
+        var later = second; later.activity.activityAt = Date(timeIntervalSince1970: 50)
+        #expect(SidebarModel.shape(xs) == SidebarModel.shape([parent, later, first, loose]), "稿件动了不重建侧栏")
+    }
+
+    @Test("窗口侧栏：对话打盹（许愿柳 10 分钟没动静标过期）稿件照样嵌在它下面；过期的稿件也照样列出；刘海的规矩不变（10-04 实拍：一场对话空闲一小时，两份跳回稿件组）")
+    func sidebarKeepsDozingParent() {
+        var conv = Activity(id: "c"); conv.open = true; conv.stale = true; conv.activityAt = Date(timeIntervalSince1970: 5)
+        let dozing = Hosted(producer: "willow", activity: conv, writtenAt: nil)
+        var awakeConv = Activity(id: "w"); awakeConv.open = true; awakeConv.activityAt = Date(timeIntervalSince1970: 6)
+        let awake = Hosted(producer: "willow", activity: awakeConv, writtenAt: nil)
+        let nested = Self.manuscript("draft-b", stale: 0, within: "c", at: 30)
+        var old = Self.manuscript("draft-d", stale: 0, within: "w", at: 20); old.activity.stale = true
+        let xs = [dozing, awake, nested, old]
+        let convs = SidebarModel.conversations(xs)
+        #expect(convs.first { $0.id == dozing.id }?.children?.map(\.id) == [nested.id])
+        #expect(convs.first { $0.id == awake.id }?.children?.map(\.id) == [old.id])
+        #expect(SidebarModel.drafts(xs).isEmpty)
+        #expect(Ordering.parent(of: nested, in: xs) == nil, "刘海照旧：过期的对话不嵌稿件")
     }
 
     @Test("侧栏骨架：稿件换了所在的对话、对话换了顺序，骨架就变（侧栏整个重建）；只改标题或数字，骨架不变")

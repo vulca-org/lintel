@@ -82,22 +82,25 @@ struct PopoverView: View {
     private func header(_ h: Hosted, _ xs: [Hosted], hasDraft: Bool) -> some View {
         HStack(spacing: 8) {
             let all = PopoverScope.conversations(xs)
-            // 对话名旁的上下箭头：换一场对话（macOS 的弹出按钮就是这个样子）。
+            // 对话名是普通文字，能拖（09-30 复现 D1：整个名字原来就是菜单按钮，从顶上一行起拖，按下就开了菜单）；
+            // 换一场对话只点名字旁的上下箭头（作者 09-30 选定）。
+            Text(PopoverScope.title(h)).font(.system(size: 13, weight: .semibold)).foregroundStyle(Tone.primary).lineLimit(1)
             Menu {
                 ForEach(all, id: \.id) { c in
                     Button(PopoverScope.title(c)) { focus = c.id; tab = .list }
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Text(PopoverScope.title(h)).font(.system(size: 13, weight: .semibold)).foregroundStyle(Tone.primary).lineLimit(1)
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(Tone.secondary)
-                }
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(Tone.secondary)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .focusEffectDisabled()
             .fixedSize()
             .disabled(all.count < 2)
+            .help(L("换一场对话", "Switch conversation"))
+            .accessibilityLabel(L("换一场对话", "Switch conversation"))
             // 为什么落在这一场（09-28 面板 grill 第三轮 R6）。
             if let r = reason, h.id == chosen {
                 Text(Self.reasonText(r))
@@ -130,7 +133,7 @@ struct PopoverView: View {
                       rows: items.prefix(Self.youRows).map { AnyView(ChainItemRow(item: $0, tint: state == .you ? Tone.cyan : Tone.secondary,
                                                                                    symbol: state == .you ? "square" : "circle.lefthalf.filled",
                                                                                    onAction: { ChainActions.send(h, $0, store: store) })) },
-                      more: items.count - Self.youRows)
+                      more: items.count - Self.youRows, open: Self.moreTarget(tab: .list, conversation: h.id, draft: draft?.id))
             } else {
                 Text(L("清单里没有开着的事", "Nothing open on the list")).font(.system(size: 12)).foregroundStyle(Tone.secondary)
             }
@@ -160,20 +163,32 @@ struct PopoverView: View {
             if !you.isEmpty {
                 group(m.youLabel, you.count, Tone.cyan,
                       rows: you.prefix(Self.draftRows).map { AnyView(ItemRow(symbol: "square", tint: Tone.cyan, tag: $0.id, text: PopoverScope.itemText($0), moved: $0.moved, detail: $0.detail)) },
-                      more: you.count - Self.draftRows)
+                      more: you.count - Self.draftRows, open: Self.moreTarget(tab: .draft, conversation: d.id, draft: d.id))
             }
             if !rerun.isEmpty {
                 group(m.rerunLabel, rerun.count, Tone.orange,
                       rows: rerun.prefix(Self.draftRows).map { AnyView(ItemRow(symbol: "arrow.clockwise", tint: Tone.orange, text: PopoverScope.itemText($0), detail: $0.detail)) },
-                      more: rerun.count - Self.draftRows)
+                      more: rerun.count - Self.draftRows, open: Self.moreTarget(tab: .draft, conversation: d.id, draft: d.id))
             }
         }
     }
 
     // MARK: 件
 
-    private func group(_ name: String, _ n: Int, _ tint: Color, rows: [AnyView], more: Int) -> some View {
-        ItemGroup(name: name, count: n, tint: tint, rows: rows, more: more)
+    /// open：点「还有 N 件」开窗口时选中哪一项。弹出框只放少量内容（Popovers :2），全部在窗口里；
+    /// 原来这里没把动作传下去，「还有 N 件」是一个灰掉的按钮（09-28 交互测试第 9 条）。
+    private func group(_ name: String, _ n: Int, _ tint: Color, rows: [AnyView], more: Int, open: String) -> some View {
+        ItemGroup(name: name, count: n, tint: tint, rows: rows, more: more, onMore: Self.moreAction(open: open, onOpenWindow: onOpenWindow))
+    }
+
+    /// 「还有 N 件」开哪一项的窗口：清单页是这场对话，稿件页是那份稿件。
+    static func moreTarget(tab: Tab, conversation: String, draft: String?) -> String {
+        tab == .draft ? (draft ?? conversation) : conversation
+    }
+
+    /// 「还有 N 件」的动作：能开窗口时开并选中 open；不能开（没接窗口）时为 nil，按钮照旧灰掉。
+    static func moreAction(open: String, onOpenWindow: ((String) -> Void)?) -> (() -> Void)? {
+        onOpenWindow.map { f in { f(open) } }
     }
 
     private func row(symbol: String, tint: Color, tag: String?, text: String, moved: String? = nil, help: String? = nil) -> some View {
@@ -259,6 +274,30 @@ enum WindowOrder {
     }
 }
 
+/// 自己拖的几步：按下（系统问能不能拖时）、拖过门槛算开始、之后每次是移动、松手。
+struct OwnDrag {
+    static let threshold: CGFloat = 6
+    enum Step: Equatable { case none, start, move }
+    private var start: CGPoint?
+    private var moving = false
+
+    mutating func begin(at p: CGPoint) { start = p; moving = false }
+
+    mutating func dragged(to p: CGPoint) -> Step {
+        guard let s = start else { return .none }
+        if moving { return .move }
+        guard hypot(p.x - s.x, p.y - s.y) >= Self.threshold else { return .none }
+        moving = true
+        return .start
+    }
+
+    /// 松手；返回刚才是不是真拖过。
+    mutating func end() -> Bool {
+        defer { start = nil; moving = false }
+        return moving
+    }
+}
+
 /// 弹出框本身：系统 NSPopover，挂在刘海舞台上（探针结论见 docs/verification/2026-09-24-nav-v5/README.md 第 0 节）：
 /// 弹出框窗口要比舞台高一层，否则舞台透明区接走拖动；打开时激活本 app，点外面才关得掉、才拖得出来；关掉时把前台还给原来那个 app。
 @MainActor
@@ -275,6 +314,13 @@ final class ConversationPopover: NSObject, NSPopoverDelegate {
     private var focus: String = ""
     /// 系统来要过窗口（开始拖）：要的那个窗口，和当时它可不可见。
     private var detachTarget: (window: NSWindow, wasVisible: Bool)?
+    /// 窗口已经开着时自己拖（见 nativeDetach）：窗口开没开着、拖过门槛（关弹出框、窗口到鼠标下）、跟着移动、松手。
+    var windowVisible: (() -> Bool)?
+    var ownDragged: ((String, NSPoint) -> Void)?
+    var ownMoved: ((NSPoint) -> Void)?
+    var ownEnded: (() -> Void)?
+    private var ownDrag = OwnDrag()
+    private var monitor: Any?
 
     var isShown: Bool { popover?.isShown ?? false }
     /// 上一次关掉的时刻：点刘海关掉弹出框时，同一次点击不能再把它打开。
@@ -323,7 +369,46 @@ final class ConversationPopover: NSObject, NSPopoverDelegate {
         return NSAppearance(named: sys)
     }
 
-    func popoverShouldDetach(_ popover: NSPopover) -> Bool { Self.log("shouldDetach"); return true }
+    /// 系统只往看不见的窗口里拖：窗口已经开着（哪怕压在别的 app 后面）时拖不出来（09-30 复现：开着 3 次都没反应，关着 1 次就出来）。
+    /// 所以窗口开着时不交给系统，自己拖；关着照旧交给系统（它会把弹出框变成窗口的样子拖出来）。
+    nonisolated static func nativeDetach(windowVisible: Bool) -> Bool { !windowVisible }
+
+    /// 系统在弹出框能拖的地方按下时来问（点在按钮、菜单上不问）；自己拖也从这里起步，所以同样不会从按钮上拖起。
+    func popoverShouldDetach(_ popover: NSPopover) -> Bool {
+        let native = Self.nativeDetach(windowVisible: windowVisible?() ?? false)
+        Self.log("shouldDetach native=\(native)")
+        if !native { watchDrag(); ownDrag.begin(at: NSEvent.mouseLocation) }
+        return native
+    }
+
+    /// 本 app 的拖动与松手事件只看不拦；弹出框关掉以后同一次按住还在拖，所以装上就不拆。
+    private func watchDrag() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] e in
+            MainActor.assumeIsolated { self?.track(e.type) }
+            return e
+        }
+    }
+
+    private func track(_ type: NSEvent.EventType) {
+        let p = NSEvent.mouseLocation
+        if type == .leftMouseUp {
+            if ownDrag.end() { Self.log("own-drag end"); ownEnded?() }
+            return
+        }
+        switch ownDrag.dragged(to: p) {
+        case .start:
+            let id = focus
+            Self.log("own-drag focus=\(id.prefix(14))")
+            previous = nil      // 窗口要到前面来：关弹出框时不把前台还给原来的 app
+            close()
+            ownDragged?(id, p)
+        case .move:
+            ownMoved?(p)
+        case .none:
+            break
+        }
+    }
 
     func detachableWindow(for popover: NSPopover) -> NSWindow? {
         let w = detachWindow?(focus)
