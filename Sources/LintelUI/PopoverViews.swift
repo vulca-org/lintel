@@ -134,13 +134,32 @@ struct PopoverView: View {
                                                                                    symbol: state == .you ? "square" : "circle.lefthalf.filled",
                                                                                    onAction: { ChainActions.send(h, $0, store: store) })) },
                       more: items.count - Self.youRows, open: Self.moreTarget(tab: .list, conversation: h.id, draft: draft?.id))
-            } else {
+            }
+            // 到了日子的「等别的」「以后」：主组下面另起一段，最多 2 行（10-06 刘海 spec D5；10-06 实见等你 8 项把三行占满，
+            // 已过 18 天的「以后」和约在当天的「等别的」只在窗口里）。
+            let due = Self.dueRows(c, shown: state == nil ? [] : Array(items.prefix(Self.youRows)))
+            if !due.rows.isEmpty {
+                group(L("到日子", "Due"), due.total, ChainMeta.dueTint(due.rows[0].due?.days ?? 0),
+                      rows: due.rows.map { AnyView(ChainItemRow(item: $0, tint: ItemStyle.tint($0.state),
+                                                                 onAction: { ChainActions.send(h, $0, store: store) })) },
+                      more: due.total - due.rows.count, open: Self.moreTarget(tab: .list, conversation: h.id, draft: draft?.id))
+            } else if state == nil {
                 Text(L("清单里没有开着的事", "Nothing open on the list")).font(.system(size: 12)).foregroundStyle(Tone.secondary)
             }
         }
         if let d = draft, let m = FlightModel.make(d, registry: store.registry) {
             FlightCard(model: m, style: .panel)
         }
+    }
+
+    /// 到日子段最多几行：和回复末尾那一行一样是 2（10-06 刘海 spec D5）。
+    static let dueMax = 2
+
+    /// 到日子段放哪几项：主组里已经画出来的不重复，日子越早越先；total 是没在主组里画过的到日子项总数。
+    static func dueRows(_ c: Activity.Chain, shown: [Activity.Chain.Item]) -> (rows: [Activity.Chain.Item], total: Int) {
+        let drawn = Set(shown.map(\.id))
+        let xs = ChainLayout.due(c).filter { !drawn.contains($0.id) }
+        return (Array(xs.prefix(dueMax)), xs.count)
     }
 
     /// 清单页放哪一组：有等你的放等你，没有就放在做，再没有就放等别的。

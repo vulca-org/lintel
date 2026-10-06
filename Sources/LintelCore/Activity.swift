@@ -137,6 +137,17 @@ extension Activity {
             /// 作者在面板里可以直接点的动作（09-28 spec「清单实时」C）：第一个画成可点的复选框，全部进右键菜单。
             /// lintel 不解析 id，点了原样写回来源的收件目录（`kind: action`），由来源决定做不做。
             public var actions: [Action]?
+            /// 到了日子（10-06 spec「刘海上露出到了日子的项」D1）：来源判定、来源写字，lintel 只看有没有。
+            /// 来源只给开着的「等别的」「以后」写，标题里的日期已过或 14 天内到；没写就是没到日子或认不出日期，不猜。
+            public var due: Due?
+
+            public struct Due: Codable, Sendable, Equatable {
+                /// 离今天几天：负的是已过，0 是今天。
+                public var days: Int
+                /// 来源按界面语言写好的一句（「已过 18 天」「今天」「还有 9 天」）。
+                public var text: String
+                public init(days: Int, text: String) { self.days = days; self.text = text }
+            }
 
             public struct Action: Codable, Sendable, Equatable, Hashable {
                 public var id: String

@@ -211,6 +211,29 @@ struct ValidationTests {
         #expect(notString.contains { $0.path.contains("now") }, "\(notString)")
     }
 
+    @Test("chain：due（到了日子）可选；days 整数、text 短字，多字段或类型不对拒收并带路径（10-06 刘海 spec D3）")
+    func chainDue() throws {
+        func withDue(_ v: Any) throws -> [Validation.Reject] {
+            try mutate { o in
+                var c = o["chain"] as! [String: Any]
+                var items = c["items"] as! [[String: Any]]
+                items[0]["due"] = v
+                c["items"] = items
+                o["chain"] = c
+            }
+        }
+        #expect(try withDue(["days": -18, "text": "已过 18 天"]).isEmpty)
+        #expect(try withDue(["days": 0, "text": "today"]).isEmpty)
+        let extra = try withDue(["days": 3, "text": "还有 3 天", "date": "10-09"])
+        #expect(extra.contains { $0.path.contains("due") }, "\(extra)")
+        let notInt = try withDue(["days": "3", "text": "还有 3 天"])
+        #expect(notInt.contains { $0.path.contains("due") }, "\(notInt)")
+        let noText = try withDue(["days": 3])
+        #expect(noText.contains { $0.path.contains("due") }, "\(noText)")
+        let longText = try withDue(["days": 3, "text": String(repeating: "长", count: Validation.Limit.short + 1)])
+        #expect(longText.contains { $0.path.contains("due") }, "\(longText)")
+    }
+
     @Test("ring：合规的接受；状态、可见性不在列出的几种之内拒收并带路径；一环挂的事超过上限拒收")
     func ring() throws {
         #expect(try mutate { _ in }.isEmpty)

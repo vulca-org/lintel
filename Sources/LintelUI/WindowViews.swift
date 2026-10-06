@@ -18,15 +18,21 @@ struct ItemGroup: View {
     var onMore: (() -> Void)? = nil
     /// 点开的折叠组收回去；nil = 这组本来就不折。
     var onFold: (() -> Void)? = nil
+    /// 折着的组：折起时到了日子的项照样列出来（10-06 刘海 spec D6），组名一行仍是朝右的箭头。
+    var folded: Bool = false
+    /// 组名后面的一句（折起的组写「到日子 1」），用 noteTint。
+    var note: String? = nil
+    var noteTint: Color = Tone.secondary
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if rows.isEmpty, let onMore {
+            if rows.isEmpty || folded, let onMore {
                 // 折起的组（以后、做完）：组名、条数、一个朝右的小箭头，点开才列（写着条数，不算悄悄藏起来）。
                 Button(action: onMore) {
                     HStack(spacing: 4) {
                         Text(name).font(.system(size: 12, weight: .semibold))
                         Text("\(count)").font(Ink.number(12, .regular))
+                        if let note { Text("· \(note)").font(.system(size: 12, weight: .semibold)).foregroundStyle(noteTint) }
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
                     }
                     .foregroundStyle(tint)
@@ -389,6 +395,11 @@ struct FoldedGroups: Equatable {
         Self.foldable(state) && !open.contains("\(activity)|\(state.rawValue)")
     }
 
+    /// 折起时露哪几项：到了日子的照样露（10-06 刘海 spec D6），其余收起；点开全列。次序照清单。
+    static func visible(_ items: [Activity.Chain.Item], folded: Bool) -> [Activity.Chain.Item] {
+        folded ? items.filter { $0.due != nil } : items
+    }
+
     mutating func toggle(_ activity: String, _ state: Activity.Chain.State) {
         guard Self.foldable(state) else { return }
         let k = "\(activity)|\(state.rawValue)"
@@ -446,12 +457,17 @@ struct DetailPane: View {
         if let c = hosted.activity.chain {
             ForEach(ChainLayout.groups(c), id: \.0) { state, items in
                 let folded = folds.folded(hosted.id, state)
+                let shown = FoldedGroups.visible(items, folded: folded)
+                let due = items.compactMap(\.due)
                 ItemGroup(name: ChainLayout.label(state, c.labels), count: items.count, tint: ItemStyle.tint(state),
-                          rows: folded ? [] : items.map { AnyView(ChainItemRow(item: $0, tint: ItemStyle.tint(state),
-                                                                                onAction: { ChainActions.send(hosted, $0, store: store) })) },
-                          more: folded ? items.count : 0,
+                          rows: shown.map { AnyView(ChainItemRow(item: $0, tint: ItemStyle.tint(state),
+                                                                  onAction: { ChainActions.send(hosted, $0, store: store) })) },
+                          more: folded ? items.count - shown.count : 0,
                           onMore: { folds.toggle(hosted.id, state) },
-                          onFold: FoldedGroups.foldable(state) ? { folds.toggle(hosted.id, state) } : nil)
+                          onFold: FoldedGroups.foldable(state) ? { folds.toggle(hosted.id, state) } : nil,
+                          folded: folded,
+                          note: folded && !due.isEmpty ? ChainLayout.dueLabel(due.count) : nil,
+                          noteTint: ChainMeta.dueTint(due.map(\.days).min() ?? 0))
             }
         }
         if let d = draft, let m = FlightModel.make(d, registry: store.registry) {

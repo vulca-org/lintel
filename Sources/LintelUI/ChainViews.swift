@@ -39,6 +39,17 @@ enum ChainLayout {
         return doing + Array(c.items.filter { $0.state == .you }.prefix(min(3, nowRows - doing.count)))
     }
 
+    /// 到了日子的项（10-06 spec「刘海上露出到了日子的项」）：来源写了 due 的、没做完的，日子越早越先，一样早按清单顺序。
+    /// 「到日子」只看来源有没有写 due，14 天这条规则在来源（D1）。
+    static func due(_ c: Activity.Chain) -> [Item] {
+        c.items.enumerated()
+            .compactMap { i, x in x.state == .done ? nil : x.due.map { (i, $0.days, x) } }
+            .sorted { ($0.1, $0.0) < ($1.1, $1.0) }
+            .map(\.2)
+    }
+
+    static func dueLabel(_ n: Int) -> String { L("到日子 \(n)", "due \(n)") }
+
     static func groups(_ c: Activity.Chain) -> [(State, [Item])] {
         groupOrder.compactMap { s in
             let xs = c.items.filter { $0.state == s }
@@ -133,8 +144,11 @@ struct ChainMeta: View {
     let item: Activity.Chain.Item
 
     static func has(_ x: Activity.Chain.Item) -> Bool {
-        x.approved == true || x.idle != nil || !(x.note ?? "").isEmpty || !(x.wait ?? "").isEmpty || !(x.blocks ?? []).isEmpty
+        x.due != nil || x.approved == true || x.idle != nil || !(x.note ?? "").isEmpty || !(x.wait ?? "").isEmpty || !(x.blocks ?? []).isEmpty
     }
+
+    /// 到日子那几个字：已过用警示色（橙 = 过期，同 ChainTone 的约定）；今天、还有几天只是提示，灰字。
+    static func dueTint(_ days: Int) -> Color { days < 0 ? Tone.orange : Tone.secondary }
 
     // 画在弹出框与窗口的浅底上：用 Tone（Ink 是给黑底刘海的白字，放在白卡片上看不见——09-27 第二轮修 N1 时实拍，旁注那一行留了高度却一个字都没有）。
     static func idleTint(_ state: Activity.Chain.State) -> Color {
@@ -143,6 +157,10 @@ struct ChainMeta: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            if let d = item.due {
+                // 到了日子：放最前，字是来源写的（「已过 18 天」「今天」「还有 9 天」）。
+                Text(d.text).foregroundStyle(ChainMeta.dueTint(d.days)).fixedSize()
+            }
             if let w = item.wait, !w.isEmpty {
                 // 「等别的」在等什么：放在最前，这一行的状态就靠它说清（第二轮 N2）。
                 Text(L("等 \(w)", "waiting on \(w)")).foregroundStyle(Tone.secondary).lineLimit(1)
