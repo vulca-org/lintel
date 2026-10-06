@@ -339,7 +339,7 @@ enum MinimumLines {
             if let first = doing.first {
                 return Lines(head: "\(c.labels.doing) \(doing.count)", headTone: Ink.secondary, body: first.text, due: suffix, dueTone: dueTone)
             }
-            if let first = due.first {
+            if let first = ChainLayout.pick(due, max: 1).first {
                 return Lines(head: ChainLayout.dueLabel(due.count), headTone: dueTone, body: first.title, due: first.due?.text, dueTone: dueTone)
             }
         }

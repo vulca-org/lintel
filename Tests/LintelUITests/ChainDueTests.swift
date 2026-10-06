@@ -93,6 +93,34 @@ struct ChainDueTests {
         #expect(PopoverView.dueRows(Self.chain([Self.item("L1", .you), Self.item("L2", .later)]), shown: []).total == 0, "没有到日子的：整段不画")
     }
 
+    /// 久过期的让位（10-06 增补 spec「只认截止日期，久过期的让位」D10）：一件已过 33 天、一件已过 8 天、一件今天、一件还有 4 天。
+    static let stale: Activity.Chain = chain([
+        item("L1", .you), item("L2", .later, due: -33), item("L3", .other, due: -8), item("L4", .other, due: 0), item("L5", .later, due: 4),
+    ])
+
+    @Test("弹出框「到日子」段：已过的最多占一行，取过得最少的，另一行给今天；只有已过的取过得最少的两项；只有没过的照旧取最近的")
+    func popoverYields() {
+        let d = PopoverView.dueRows(Self.stale, shown: [Self.stale.items[0]])
+        #expect(d.rows.map(\.id) == ["L3", "L4"])
+        #expect(d.total == 4)
+        let past = Self.chain([Self.item("L1", .later, due: -33), Self.item("L2", .later, due: -18), Self.item("L3", .other, due: -8)])
+        #expect(PopoverView.dueRows(past, shown: []).rows.map(\.id) == ["L2", "L3"])
+        let tie = Self.chain([Self.item("L1", .later, due: -8), Self.item("L2", .other, due: -8), Self.item("L3", .other, due: -20)])
+        #expect(PopoverView.dueRows(tie, shown: []).rows.map(\.id) == ["L1", "L2"], "一样的天数按清单顺序")
+        let next = Self.chain([Self.item("L1", .other, due: 4), Self.item("L2", .other, due: 0), Self.item("L3", .later, due: 2)])
+        #expect(PopoverView.dueRows(next, shown: []).rows.map(\.id) == ["L2", "L3"])
+    }
+
+    @Test("悬停退路：有好几件已过时，第二行是过得最少的那件，不是最老的那件；仍用警示色")
+    func hoverFallbackYields() throws {
+        let c = Self.chain(Self.stale.items.filter { $0.state != .you })
+        let l = try #require(MinimumLines.lines(Self.hosted(c)))
+        #expect(l.head == "到日子 4")
+        #expect(l.body == "合成事项 L3")
+        #expect(l.due == "已过 8 天")
+        #expect(l.headTone == Swatch.orange.color)
+    }
+
     @Test("窗口：以后组折着时，到了日子的项照样露出；点开以后全列")
     func windowFold() {
         let later = Self.incident.items.filter { $0.state == .later }

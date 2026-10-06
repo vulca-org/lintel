@@ -155,11 +155,11 @@ struct PopoverView: View {
     /// 到日子段最多几行：和回复末尾那一行一样是 2（10-06 刘海 spec D5）。
     static let dueMax = 2
 
-    /// 到日子段放哪几项：主组里已经画出来的不重复，日子越早越先；total 是没在主组里画过的到日子项总数。
+    /// 到日子段放哪几项：主组里已经画出来的不重复，取法见 ChainLayout.pick；total 是没在主组里画过的到日子项总数。
     static func dueRows(_ c: Activity.Chain, shown: [Activity.Chain.Item]) -> (rows: [Activity.Chain.Item], total: Int) {
         let drawn = Set(shown.map(\.id))
         let xs = ChainLayout.due(c).filter { !drawn.contains($0.id) }
-        return (Array(xs.prefix(dueMax)), xs.count)
+        return (ChainLayout.pick(xs, max: dueMax), xs.count)
     }
 
     /// 清单页放哪一组：有等你的放等你，没有就放在做，再没有就放等别的。

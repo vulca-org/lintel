@@ -48,6 +48,20 @@ enum ChainLayout {
             .map(\.2)
     }
 
+    /// 名额不够时取哪几项（10-06 增补 spec「只认截止日期，久过期的让位」D10，和许愿柳那一行的 pickDue 同一个取法）：
+    /// 已过的最多占一个，取过得最少的；其余给今天和最近的；只有一类就在那一类里取。xs 是 due(c) 排好的顺序，取出来照旧按它排。
+    /// 原来是「越早越先」，一件已过一个月、作者决定先放着的事会一直占着第一行。
+    static func pick(_ xs: [Item], max: Int) -> [Item] {
+        let r = xs.enumerated().map { ($0.offset, $0.element.due?.days ?? 0, $0.element) }
+        var past = r.filter { $0.1 < 0 }.sorted { ($1.1, $0.0) < ($0.1, $1.0) }
+        var next = r.filter { $0.1 >= 0 }
+        var out: [(Int, Int, Item)] = []
+        if max > 0, !past.isEmpty { out.append(past.removeFirst()) }
+        while out.count < max, !next.isEmpty { out.append(next.removeFirst()) }
+        while out.count < max, !past.isEmpty { out.append(past.removeFirst()) }
+        return out.sorted { $0.0 < $1.0 }.map(\.2)
+    }
+
     static func dueLabel(_ n: Int) -> String { L("到日子 \(n)", "due \(n)") }
 
     static func groups(_ c: Activity.Chain) -> [(State, [Item])] {
