@@ -746,13 +746,18 @@ public final class StageController {
         if case .window(let id) = Self.clickTarget(expanded: state.expanded, popover: state.popover,
                                                    pinned: state.pinned, fromIsland: state.fromIsland) {
             demoLog("island-card click → window \(id.prefix(14))")
-            autoCollapse?.invalidate(); autoCollapse = nil
-            if let h = store.activities.first(where: { $0.id == id }) { seen.markSeen(h) }
-            setExpanded(false, reason: "island-window")
-            lintelWindow.show(select: id)
+            openWindow(id, reason: "island-window")
             return
         }
         togglePopover()
+    }
+
+    /// 开窗口并选中这一件：收起展开的卡，标成看过。
+    private func openWindow(_ id: String, reason: String) {
+        autoCollapse?.invalidate(); autoCollapse = nil
+        if let h = store.activities.first(where: { $0.id == id }) { seen.markSeen(h) }
+        setExpanded(false, reason: reason)
+        lintelWindow.show(select: id)
     }
 
     enum ClickTarget: Equatable { case popover, window(String) }
@@ -795,6 +800,19 @@ public final class StageController {
         return chosen
     }
 
+    enum PopoverTarget: Equatable { case conversation(Hosted), window(String), none }
+
+    /// 点刘海开什么。弹出框只讲一场对话：主位是对话就是它；主位是嵌着的稿件就是它所在的对话；都不是就最近的对话。
+    /// 一场开着的对话都没有、主位是稿件（10-06：夜里对话全关了，只剩写作循环的稿件），弹出框没有可讲的；
+    /// 先前在这里静默返回，点几次都没反应。改照点稿件小岛的设计：开窗口并选中这份稿件。
+    static func popoverTarget(primary: Hosted?, in xs: [Hosted]) -> PopoverTarget {
+        if let conv = primary.flatMap({ p in p.activity.ring == nil ? p : Ordering.parent(of: p, in: xs) }) ?? PopoverScope.conversations(xs).first {
+            return .conversation(conv)
+        }
+        if let p = primary { return .window(p.id) }
+        return .none
+    }
+
     /// 点刘海：收起悬停卡，从收起态的刘海弹出一个指着它的弹出框；再点一次关掉。
     private func togglePopover(draft: Bool = false) {
         if pop.isShown { pop.close(); return }
@@ -803,9 +821,18 @@ public final class StageController {
         guard let view = panel.contentView else { return }
         let xs = store.activities
         let primary = demoPinned.flatMap { id in xs.first { $0.id == id } } ?? Ordering.pair(xs, seen, pinned: state.pinned).primary
-        // 讲哪场对话：主位是对话就是它；主位是嵌着的稿件就是它所在的对话；都不是就最近的对话。
-        let conv = primary.flatMap { p in p.activity.ring == nil ? p : Ordering.parent(of: p, in: xs) } ?? PopoverScope.conversations(xs).first
-        guard let conv else { return }
+        let conv: Hosted
+        switch Self.popoverTarget(primary: primary, in: xs) {
+        case .conversation(let c): conv = c
+        case .window(let id):
+            demoLog("popover: no open conversation → window \(id.prefix(14))")
+            hoverIntent?.cancel()
+            openWindow(id, reason: "no-conversation-window")
+            return
+        case .none:
+            demoLog("popover: nothing to open")
+            return
+        }
         // 为什么是这一场：下面一行就把全部标成看过，原因要先算。
         let why = primary.flatMap { Ordering.reason($0, in: xs, seen, pinned: Self.chosenPin(pinned: state.pinned, chosen: state.chosen)) }
         autoCollapse?.invalidate(); autoCollapse = nil
