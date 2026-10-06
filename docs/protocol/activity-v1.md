@@ -68,6 +68,9 @@
 | `chain.items[].actions[].title` | 字符串（≤64 字） | 是 |
 | `chain.items[].approved` | 布尔 |  |
 | `chain.items[].blocks` | 数组（≤16）of 字符串（≤64 字） |  |
+| `chain.items[].due` | 对象 |  |
+| `chain.items[].due.days` | 整数 -100000…100000 | 是 |
+| `chain.items[].due.text` | 字符串（≤64 字） | 是 |
 | `chain.items[].id` | 字符串（≤16 字） | 是 |
 | `chain.items[].idle` | 整数 0…100000 |  |
 | `chain.items[].note` | 字符串（≤64 字） |  |
@@ -334,6 +337,7 @@
 | `ring.closed[].items` | 数组（≤64）of 字符串（≤64 字） | 是 |
 | `ring.current` | 字符串（≤16 字） |  |
 | `ring.error` | 字符串（≤20000 字） |  |
+| `ring.frozenNote` | 字符串（≤64 字） |  |
 | `ring.labels` | 对象 | 是 |
 | `ring.labels.closed` | 字符串（≤64 字） | 是 |
 | `ring.labels.current` | 字符串（≤64 字） | 是 |
@@ -344,6 +348,7 @@
 | `ring.latest` | 字符串（≤16 字） |  |
 | `ring.latestAt` | ISO 8601 时刻，必须带时区 |  |
 | `ring.name` | 字符串（≤64 字） |  |
+| `ring.progress` | 字符串（≤64 字） |  |
 | `ring.reached` | 字符串（≤16 字） |  |
 | `ring.segments` | 数组（≤8）of 对象 | 是 |
 | `ring.segments[].items` | 数组（≤32）of 对象 | 是 |

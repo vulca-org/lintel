@@ -312,19 +312,39 @@ struct RouteLegend: View {
 
 // MARK: 刘海里的展开态
 
-/// 最矮展开的两行：第一行「等你 N」（青），第二行第一件等你的事。没有等你的退到在做，再退到来源写的标签。
+/// 最矮展开的两行：第一行「等你 N」（青），第二行第一件等你的事。没有等你的退到在做，再退到到日子的项，再退到来源写的标签。
+/// 有到了日子的项时，第一行后面跟「· 到日子 N」，有已过的用警示色（10-06 刘海 spec D4 的改法：
+/// spec 写的是三行「此刻」让出一行，但那三行（ChainLayout.now）现在没人画，悬停真画的是这两行）。
 @MainActor
 enum MinimumLines {
-    static func lines(_ h: Hosted) -> (head: String, headTone: Color, body: String)? {
+    struct Lines {
+        var head: String
+        var headTone: Color
+        var body: String
+        var due: String? = nil
+        var dueTone: Color = Ink.secondary
+    }
+
+    static func lines(_ h: Hosted) -> Lines? {
         let a = h.activity
         if let c = a.chain {
+            let due = ChainLayout.due(c)
+            let dueTone = (due.first?.due?.days ?? 0) < 0 ? Swatch.orange.color : Ink.secondary
+            let suffix = due.isEmpty ? nil : ChainLayout.dueLabel(due.count)
             let you = c.items.filter { $0.state == .you }
-            if let first = you.first { return ("\(c.labels.you) \(you.count)", Tone.cyan, first.text) }
+            if let first = you.first {
+                return Lines(head: "\(c.labels.you) \(you.count)", headTone: Tone.cyan, body: first.text, due: suffix, dueTone: dueTone)
+            }
             let doing = c.items.filter { $0.state == .doing }
-            if let first = doing.first { return ("\(c.labels.doing) \(doing.count)", Ink.secondary, first.text) }
+            if let first = doing.first {
+                return Lines(head: "\(c.labels.doing) \(doing.count)", headTone: Ink.secondary, body: first.text, due: suffix, dueTone: dueTone)
+            }
+            if let first = ChainLayout.pick(due, max: 1).first {
+                return Lines(head: ChainLayout.dueLabel(due.count), headTone: dueTone, body: first.title, due: first.due?.text, dueTone: dueTone)
+            }
         }
         guard let head = a.label?.text ?? a.flip?.title else { return nil }
-        return (head, Ink.secondary, a.status?.summary ?? a.flip?.subtitle ?? "")
+        return Lines(head: head, headTone: Ink.secondary, body: a.status?.summary ?? a.flip?.subtitle ?? "")
     }
 }
 
@@ -417,9 +437,12 @@ struct ExpandedV5: View {
         } else if let l = MinimumLines.lines(h) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(l.head)
-                        .font(.system(size: 12, weight: .semibold)).monospacedDigit()
-                        .foregroundStyle(l.headTone)
+                    HStack(spacing: 0) {
+                        Text(l.head).foregroundStyle(l.headTone)
+                        if let d = l.due { Text(" · \(d)").foregroundStyle(l.dueTone) }
+                    }
+                    .font(.system(size: 12, weight: .semibold)).monospacedDigit()
+                    .lineLimit(1)
                     Text(l.body)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.white)

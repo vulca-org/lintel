@@ -62,7 +62,9 @@ func fullActivity(id: String = "sess-a") -> Activity {
     a.labelUntilSeen = true
     a.labelSeen = .init(text: "等你", tone: .white, count: 3)
     a.chain = .init(items: [.init(id: "L1", text: "合并 PR", state: .done, note: "main 8d68286", approved: true, idle: nil),
-                            .init(id: "L2", text: "重画分镜", state: .doing, note: nil, approved: nil, idle: 6)],
+                            .init(id: "L2", text: "重画分镜", state: .doing, note: nil, approved: nil, idle: 6),
+                            .init(id: "L3", text: "交合成说明，10-20 前", state: .later, note: nil, approved: nil, idle: nil,
+                                  due: .init(days: -18, text: "已过 18 天"))],
                     problems: ["L9 不存在"],
                     labels: .init(done: "做完", doing: "在做", you: "等你", other: "等别的", later: "以后"),
                     error: nil)

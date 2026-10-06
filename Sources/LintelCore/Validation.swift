@@ -175,6 +175,8 @@ public enum Validation {
             "was": .opt(.string(max: Limit.line)), "now": .opt(.string(max: Limit.line)), "wait": .opt(.string(max: Limit.short)),
             "blocks": .opt(.array(.string(max: Limit.short), max: 16)),
             "actions": .opt(.array(.object(["id": .req(.string(max: 512)), "title": .req(.string(max: Limit.short))]), max: 4)),
+            // 到了日子（10-06 刘海 spec D3）。旧结构表见到它会整份拒收，所以要先装新 lintel、再装写它的来源。
+            "due": .opt(.object(["days": .req(.integer(-100_000...100_000)), "text": .req(.string(max: Limit.short))])),
         ]), max: Limit.list)),
         "problems": .req(.array(.string(max: Limit.line), max: 16)),
         "labels": .req(.object(["done": .req(.string(max: Limit.short)), "doing": .req(.string(max: Limit.short)),
